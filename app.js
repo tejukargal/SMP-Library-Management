@@ -45,6 +45,11 @@ function setupEventListeners() {
     const searchInput = document.getElementById('searchInput');
     const searchBtn = document.getElementById('searchBtn');
 
+    // Convert search input to uppercase dynamically
+    searchInput.addEventListener('input', (e) => {
+        e.target.value = e.target.value.toUpperCase();
+    });
+
     searchBtn.addEventListener('click', performSearch);
     searchInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
@@ -102,7 +107,8 @@ async function performSearch() {
             .from('students')
             .select('*')
             .or(`name.ilike.%${searchTerm}%,father.ilike.%${searchTerm}%,reg_no.ilike.%${searchTerm}%`)
-            .order('name');
+            .order('name')
+            .limit(10);
 
         if (error) throw error;
 
@@ -166,8 +172,31 @@ function showContextMenu(e) {
 
     const contextMenu = document.getElementById('contextMenu');
     contextMenu.style.display = 'block';
-    contextMenu.style.left = `${e.pageX}px`;
-    contextMenu.style.top = `${e.pageY}px`;
+
+    // Get menu dimensions
+    const menuWidth = contextMenu.offsetWidth || 200;
+    const menuHeight = contextMenu.offsetHeight || 150;
+
+    // Get viewport dimensions
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    // Calculate position
+    let left = e.pageX;
+    let top = e.pageY;
+
+    // Adjust if menu would go off right edge
+    if (left + menuWidth > viewportWidth + window.scrollX) {
+        left = viewportWidth + window.scrollX - menuWidth - 10;
+    }
+
+    // Adjust if menu would go off bottom edge
+    if (top + menuHeight > viewportHeight + window.scrollY) {
+        top = viewportHeight + window.scrollY - menuHeight - 10;
+    }
+
+    contextMenu.style.left = `${left}px`;
+    contextMenu.style.top = `${top}px`;
 }
 
 // Hide Context Menu
@@ -176,7 +205,7 @@ function hideContextMenu() {
 }
 
 // Open Issue Books Modal
-function openIssueModal() {
+async function openIssueModal() {
     hideContextMenu();
 
     if (!selectedStudent) return;
@@ -191,11 +220,52 @@ function openIssueModal() {
     bookEntryCount = 0;
     document.getElementById('booksContainer').innerHTML = '';
 
+    // Load previously issued books
+    await loadPreviouslyIssuedBooks();
+
     // Add first book entry
     addBookEntry();
 
     // Show modal
     showModal('issueModal');
+}
+
+// Load Previously Issued Books for Issue Modal
+async function loadPreviouslyIssuedBooks() {
+    const section = document.getElementById('previouslyIssuedSection');
+    const container = document.getElementById('previouslyIssuedBooks');
+
+    try {
+        const { data, error } = await supabase
+            .from('book_issues')
+            .select('*')
+            .eq('student_reg_no', selectedStudent.reg_no)
+            .eq('status', 'issued')
+            .order('issue_date', { ascending: false });
+
+        if (error) throw error;
+
+        if (data.length === 0) {
+            section.style.display = 'none';
+            return;
+        }
+
+        section.style.display = 'block';
+
+        const booksHtml = data.map(book => `
+            <div class="previously-issued-item">
+                <div class="book-info-inline">
+                    <strong>${escapeHtml(book.book_name)}</strong> by ${escapeHtml(book.author)}
+                    <span class="book-meta">Book #${escapeHtml(book.book_no)} • Issued: ${formatDate(book.issue_date)}</span>
+                </div>
+            </div>
+        `).join('');
+
+        container.innerHTML = booksHtml;
+    } catch (error) {
+        console.error('Load previously issued books error:', error);
+        section.style.display = 'none';
+    }
 }
 
 // Add Book Entry
