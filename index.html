@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Library Management System</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📚 Library Management System</h1>
+            <p class="subtitle">SMP Library Register</p>
+        </header>
+
+        <main>
+            <!-- Search Section -->
+            <section class="search-section">
+                <div class="search-box">
+                    <input
+                        type="text"
+                        id="searchInput"
+                        placeholder="Search by Student Name, Father Name, or Registration Number..."
+                        autocomplete="off"
+                    >
+                    <button id="searchBtn" class="btn btn-primary">🔍 Search</button>
+                </div>
+                <div id="loadingIndicator" class="loading-indicator" style="display: none;">
+                    <div class="spinner"></div>
+                    <span>Searching...</span>
+                </div>
+            </section>
+
+            <!-- Results Section -->
+            <section class="results-section">
+                <div id="resultsContainer" class="results-container">
+                    <div class="empty-state">
+                        <p>🔍 Enter a search term to find students</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Context Menu -->
+        <div id="contextMenu" class="context-menu" style="display: none;">
+            <ul>
+                <li id="menuIssueBooks">📖 Issue Books</li>
+                <li id="menuReturnBooks">🔄 Return Books</li>
+                <li class="menu-divider"></li>
+                <li id="menuClose">❌ Close</li>
+            </ul>
+        </div>
+
+        <!-- Issue Books Modal -->
+        <div id="issueModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Issue Books</h2>
+                    <span class="close-btn" data-modal="issueModal">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="student-info">
+                        <h3 id="issueStudentName"></h3>
+                        <p><strong>Reg No:</strong> <span id="issueStudentRegNo"></span></p>
+                        <p><strong>Course:</strong> <span id="issueStudentCourse"></span></p>
+                        <p><strong>Year:</strong> <span id="issueStudentYear"></span></p>
+                    </div>
+
+                    <div class="books-container" id="booksContainer">
+                        <!-- Book entries will be added here -->
+                    </div>
+
+                    <button id="addBookBtn" class="btn btn-secondary">+ Add Another Book</button>
+                </div>
+                <div class="modal-footer">
+                    <button id="cancelIssueBtn" class="btn btn-cancel">Cancel</button>
+                    <button id="submitIssueBtn" class="btn btn-primary">Issue Books</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Return Books Modal -->
+        <div id="returnModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Return Books</h2>
+                    <span class="close-btn" data-modal="returnModal">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="student-info">
+                        <h3 id="returnStudentName"></h3>
+                        <p><strong>Reg No:</strong> <span id="returnStudentRegNo"></span></p>
+                    </div>
+
+                    <div id="issuedBooksContainer" class="issued-books-container">
+                        <!-- Issued books will be loaded here -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="cancelReturnBtn" class="btn btn-cancel">Cancel</button>
+                    <button id="submitReturnBtn" class="btn btn-primary">Return Selected Books</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast Notification -->
+        <div id="toast" class="toast"></div>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>

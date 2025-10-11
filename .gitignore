@@ -1,0 +1,16 @@
+# Configuration
+config.json
+
+# Node modules (if using import script)
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

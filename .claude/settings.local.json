@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where:*)",
+      "Bash(cat:*)",
+      "Bash(dir:*)",
+      "mcp__supabase__list_projects",
+      "mcp__supabase__list_tables",
+      "mcp__supabase__apply_migration",
+      "Bash(npm install)",
+      "Bash(npm run import:*)",
+      "mcp__supabase__execute_sql",
+      "mcp__supabase__get_advisors",
+      "Bash(npm run serve)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

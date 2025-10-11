@@ -1,0 +1,25 @@
+{
+  "name": "library-management-system",
+  "version": "1.0.0",
+  "description": "Library Management System for SMP Library Register",
+  "type": "module",
+  "scripts": {
+    "import": "node import-students.js",
+    "serve": "http-server -p 8000 -o"
+  },
+  "keywords": [
+    "library",
+    "management",
+    "supabase",
+    "education"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "csv-parse": "^5.5.3"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}
