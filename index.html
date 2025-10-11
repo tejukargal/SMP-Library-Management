@@ -14,6 +14,47 @@
         </header>
 
         <main>
+            <!-- Dashboard Metrics Section -->
+            <section class="dashboard-section">
+                <div class="metrics-grid">
+                    <div class="metric-card metric-issued">
+                        <div class="metric-icon">📚</div>
+                        <div class="metric-content">
+                            <div class="metric-value" id="totalIssuedBooks">0</div>
+                            <div class="metric-label">Total Issued Books</div>
+                        </div>
+                    </div>
+                    <div class="metric-card metric-returned">
+                        <div class="metric-icon">✅</div>
+                        <div class="metric-content">
+                            <div class="metric-value" id="totalReturnedBooks">0</div>
+                            <div class="metric-label">Total Returned Books</div>
+                        </div>
+                    </div>
+                    <div class="metric-card metric-pending">
+                        <div class="metric-icon">⏳</div>
+                        <div class="metric-content">
+                            <div class="metric-value" id="totalPendingBooks">0</div>
+                            <div class="metric-label">Total Pending Books</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Issued Students List -->
+                <div class="issued-students-card">
+                    <div class="card-header">
+                        <h3>📋 Issued Students List (Pending Returns)</h3>
+                        <button id="refreshDashboardBtn" class="btn-refresh" title="Refresh Dashboard">🔄</button>
+                    </div>
+                    <div id="issuedStudentsList" class="issued-students-list">
+                        <div class="loading-indicator">
+                            <div class="spinner"></div>
+                            <span>Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- Search Section -->
             <section class="search-section">
                 <div class="search-box">

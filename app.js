@@ -18,6 +18,9 @@ async function init() {
         // Setup event listeners
         setupEventListeners();
 
+        // Load dashboard data
+        await loadDashboard();
+
         console.log('Application initialized successfully');
     } catch (error) {
         console.error('Initialization error:', error);
@@ -66,6 +69,9 @@ function setupEventListeners() {
     document.getElementById('submitReturnBtn').addEventListener('click', submitReturnBooks);
     document.getElementById('cancelReturnBtn').addEventListener('click', () => closeModal('returnModal'));
 
+    // Dashboard refresh
+    document.getElementById('refreshDashboardBtn').addEventListener('click', loadDashboard);
+
     // Close buttons
     document.querySelectorAll('.close-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -82,6 +88,77 @@ function setupEventListeners() {
             }
         });
     });
+}
+
+// Load Dashboard Metrics and Issued Students List
+async function loadDashboard() {
+    try {
+        // Get all book issues
+        const { data: allBooks, error } = await supabase
+            .from('book_issues')
+            .select('*, students(name, reg_no, course, year)');
+
+        if (error) throw error;
+
+        // Calculate metrics
+        const issuedBooks = allBooks.filter(book => book.status === 'issued');
+        const returnedBooks = allBooks.filter(book => book.status === 'returned');
+
+        document.getElementById('totalIssuedBooks').textContent = issuedBooks.length;
+        document.getElementById('totalReturnedBooks').textContent = returnedBooks.length;
+        document.getElementById('totalPendingBooks').textContent = issuedBooks.length;
+
+        // Get unique students with issued books
+        const studentsWithIssued = {};
+        issuedBooks.forEach(book => {
+            const regNo = book.student_reg_no;
+            if (!studentsWithIssued[regNo]) {
+                studentsWithIssued[regNo] = {
+                    ...book.students,
+                    books: []
+                };
+            }
+            studentsWithIssued[regNo].books.push(book);
+        });
+
+        // Display issued students list
+        const studentsList = document.getElementById('issuedStudentsList');
+        const studentsArray = Object.values(studentsWithIssued);
+
+        if (studentsArray.length === 0) {
+            studentsList.innerHTML = `
+                <div class="empty-state-small">
+                    <p>✨ No pending returns - All books are returned!</p>
+                </div>
+            `;
+            return;
+        }
+
+        const studentsHtml = studentsArray.map(student => `
+            <div class="issued-student-item">
+                <div class="issued-student-info">
+                    <div class="issued-student-name">${escapeHtml(student.name)}</div>
+                    <div class="issued-student-details">
+                        <span>Reg No: ${escapeHtml(student.reg_no)}</span>
+                        <span>•</span>
+                        <span>${escapeHtml(student.course)} - ${escapeHtml(student.year)}</span>
+                    </div>
+                </div>
+                <div class="issued-student-count">
+                    <span class="books-pending-badge">${student.books.length} ${student.books.length === 1 ? 'Book' : 'Books'}</span>
+                </div>
+            </div>
+        `).join('');
+
+        studentsList.innerHTML = studentsHtml;
+    } catch (error) {
+        console.error('Load dashboard error:', error);
+        document.getElementById('issuedStudentsList').innerHTML = `
+            <div class="empty-state-small">
+                <p>❌ Error loading dashboard data</p>
+            </div>
+        `;
+    }
 }
 
 // Search Students
@@ -236,11 +313,12 @@ async function openIssueModal() {
     document.getElementById('issueStudentCourse').textContent = selectedStudent.course;
     document.getElementById('issueStudentYear').textContent = selectedStudent.year;
 
-    // Get the count of all books (issued + returned) for this student to start numbering
+    // Get the count of currently issued books (not returned) for this student
     const { data, error } = await supabase
         .from('book_issues')
         .select('id')
-        .eq('student_reg_no', selectedStudent.reg_no);
+        .eq('student_reg_no', selectedStudent.reg_no)
+        .eq('status', 'issued');
 
     bookEntryCount = data ? data.length : 0;
 
@@ -279,9 +357,10 @@ async function loadPreviouslyIssuedBooks() {
 
         section.style.display = 'block';
 
-        const booksHtml = data.map(book => `
+        const booksHtml = data.map((book, index) => `
             <div class="previously-issued-item">
                 <div class="book-info-inline">
+                    <span class="book-sl-badge">Sl ${index + 1}</span>
                     <strong>${escapeHtml(book.book_name)}</strong> by ${escapeHtml(book.author)}
                     <span class="book-meta">Book #${escapeHtml(book.book_no)} • Issued: ${formatDate(book.issue_date)}</span>
                 </div>
@@ -305,15 +384,23 @@ function addBookEntry() {
     bookEntry.className = 'book-entry';
     bookEntry.dataset.bookId = bookEntryCount;
 
-    // Auto-generate book number as "Book X"
-    const autoBookNumber = `Book ${bookEntryCount + 1}`;
+    // Serial number based on currently issued books
+    const slNo = bookEntryCount;
 
     bookEntry.innerHTML = `
         <div class="book-entry-header">
-            <span class="book-entry-title">Adding: ${autoBookNumber}</span>
+            <span class="book-entry-title">Sl No. ${slNo}</span>
             ${currentEntries > 0 ? '<button class="remove-book-btn" onclick="removeBookEntry(this)">Remove</button>' : ''}
         </div>
         <div class="form-grid">
+            <div class="form-group">
+                <label>Sl No. *</label>
+                <input type="text" class="book-sl-no" value="${slNo}" required readonly>
+            </div>
+            <div class="form-group">
+                <label>Book Number *</label>
+                <input type="text" class="book-no" required placeholder="Enter book number">
+            </div>
             <div class="form-group full-width">
                 <label>Book Name *</label>
                 <input type="text" class="book-name" required>
@@ -323,10 +410,6 @@ function addBookEntry() {
                 <input type="text" class="book-author" required>
             </div>
             <div class="form-group">
-                <label>Book Number *</label>
-                <input type="text" class="book-no" value="${autoBookNumber}" required readonly>
-            </div>
-            <div class="form-group full-width">
                 <label>Date of Issue *</label>
                 <input type="date" class="book-date" value="${getCurrentDate()}" required>
             </div>
@@ -402,6 +485,9 @@ async function submitIssueBooks() {
 
         showToast(`Successfully issued ${books.length} book(s) to ${selectedStudent.name}`, 'success');
         closeModal('issueModal');
+
+        // Refresh dashboard
+        await loadDashboard();
     } catch (error) {
         console.error('Issue books error:', error);
         showToast('Failed to issue books: ' + error.message, 'error');
@@ -506,6 +592,9 @@ async function submitReturnBooks() {
 
         // Reload issued books
         await loadIssuedBooks();
+
+        // Refresh dashboard
+        await loadDashboard();
 
         // If no more books, close modal
         const remainingBooks = document.querySelectorAll('.book-return-checkbox');
