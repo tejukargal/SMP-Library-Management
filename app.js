@@ -69,12 +69,17 @@ function setupEventListeners() {
     document.getElementById('submitReturnBtn').addEventListener('click', submitReturnBooks);
     document.getElementById('cancelReturnBtn').addEventListener('click', () => closeModal('returnModal'));
 
-    // Dashboard refresh and toggle
+    // Dashboard and metric cards
     document.getElementById('refreshDashboardBtn').addEventListener('click', loadDashboard);
-    document.getElementById('toggleStudentsListBtn').addEventListener('click', toggleStudentsList);
-    document.getElementById('savePdfBtn').addEventListener('click', exportToPDF);
-    document.getElementById('yearFilter').addEventListener('change', filterStudentsList);
-    document.getElementById('courseFilter').addEventListener('change', filterStudentsList);
+    document.getElementById('issuedCard').addEventListener('click', () => showBooksList('issued'));
+    document.getElementById('returnedCard').addEventListener('click', () => showBooksList('returned'));
+    document.getElementById('pendingCard').addEventListener('click', () => showBooksList('pending'));
+
+    // Books list modal
+    document.getElementById('closeBooksListBtn').addEventListener('click', () => closeModal('booksListModal'));
+    document.getElementById('booksYearFilter').addEventListener('change', filterBooksList);
+    document.getElementById('booksCourseFilter').addEventListener('change', filterBooksList);
+    document.getElementById('exportPdfBtn').addEventListener('click', exportBooksListToPDF);
 
     // Close buttons
     document.querySelectorAll('.close-btn').forEach(btn => {
@@ -94,10 +99,11 @@ function setupEventListeners() {
     });
 }
 
-// Global variable to store current students data for filtering
-let allIssuedStudentsData = [];
+// Global variables to store books data
+let allBooksData = [];
+let currentBooksListType = 'pending';
 
-// Load Dashboard Metrics and Issued Students List
+// Load Dashboard Metrics
 async function loadDashboard() {
     try {
         // Get all book issues
@@ -106,6 +112,9 @@ async function loadDashboard() {
             .select('*, students(name, reg_no, course, year)');
 
         if (error) throw error;
+
+        // Store globally
+        allBooksData = allBooks;
 
         // Calculate metrics - Fix: Total Issued - Total Returned = Total Pending
         const totalIssued = allBooks.length;
@@ -117,55 +126,76 @@ async function loadDashboard() {
         document.getElementById('totalIssuedBooks').textContent = totalIssued;
         document.getElementById('totalReturnedBooks').textContent = totalReturned;
         document.getElementById('totalPendingBooks').textContent = totalPending;
-
-        // Get unique students with issued books
-        const studentsWithIssued = {};
-        issuedBooks.forEach(book => {
-            const regNo = book.student_reg_no;
-            if (!studentsWithIssued[regNo]) {
-                studentsWithIssued[regNo] = {
-                    ...book.students,
-                    books: []
-                };
-            }
-            studentsWithIssued[regNo].books.push(book);
-        });
-
-        // Store data globally for filtering
-        allIssuedStudentsData = Object.values(studentsWithIssued);
-
-        // Populate filter dropdowns
-        const years = [...new Set(allIssuedStudentsData.map(s => s.year))].sort();
-        const courses = [...new Set(allIssuedStudentsData.map(s => s.course))].sort();
-
-        const yearFilter = document.getElementById('yearFilter');
-        const courseFilter = document.getElementById('courseFilter');
-
-        yearFilter.innerHTML = '<option value="">All Years</option>' +
-            years.map(year => `<option value="${year}">${year}</option>`).join('');
-        courseFilter.innerHTML = '<option value="">All Courses</option>' +
-            courses.map(course => `<option value="${course}">${course}</option>`).join('');
-
-        // Display the list
-        displayStudentsList(allIssuedStudentsData);
     } catch (error) {
         console.error('Load dashboard error:', error);
-        document.getElementById('issuedStudentsList').innerHTML = `
-            <div class="empty-state-small">
-                <p>❌ Error loading dashboard data</p>
-            </div>
-        `;
+        showToast('Error loading dashboard data', 'error');
     }
 }
 
-// Display Students List in Table Format
-function displayStudentsList(students) {
-    const studentsList = document.getElementById('issuedStudentsList');
+// Show Books List Modal
+async function showBooksList(type) {
+    currentBooksListType = type;
+
+    // Set modal title
+    const titles = {
+        'issued': '📚 Total Issued Books List',
+        'returned': '✅ Total Returned Books List',
+        'pending': '⏳ Pending Books List'
+    };
+    document.getElementById('booksListTitle').textContent = titles[type];
+
+    // Filter books by type
+    let books;
+    if (type === 'issued') {
+        books = allBooksData; // All books (issued + returned)
+    } else if (type === 'returned') {
+        books = allBooksData.filter(book => book.status === 'returned');
+    } else {
+        books = allBooksData.filter(book => book.status === 'issued'); // Pending
+    }
+
+    // Group by student
+    const studentsWithBooks = {};
+    books.forEach(book => {
+        const regNo = book.student_reg_no;
+        if (!studentsWithBooks[regNo]) {
+            studentsWithBooks[regNo] = {
+                ...book.students,
+                books: []
+            };
+        }
+        studentsWithBooks[regNo].books.push(book);
+    });
+
+    const studentsArray = Object.values(studentsWithBooks);
+
+    // Populate filter dropdowns
+    const years = [...new Set(studentsArray.map(s => s.year))].sort();
+    const courses = [...new Set(studentsArray.map(s => s.course))].sort();
+
+    const yearFilter = document.getElementById('booksYearFilter');
+    const courseFilter = document.getElementById('booksCourseFilter');
+
+    yearFilter.innerHTML = '<option value="">All Years</option>' +
+        years.map(year => `<option value="${year}">${year}</option>`).join('');
+    courseFilter.innerHTML = '<option value="">All Courses</option>' +
+        courses.map(course => `<option value="${course}">${course}</option>`).join('');
+
+    // Display the list
+    displayBooksList(studentsArray);
+
+    // Show modal
+    showModal('booksListModal');
+}
+
+// Display Books List
+function displayBooksList(students) {
+    const container = document.getElementById('booksListContainer');
 
     if (students.length === 0) {
-        studentsList.innerHTML = `
+        container.innerHTML = `
             <div class="empty-state-small">
-                <p>✨ No pending returns - All books are returned!</p>
+                <p>✨ No data available</p>
             </div>
         `;
         return;
@@ -180,7 +210,7 @@ function displayStudentsList(students) {
                     <th>Reg No</th>
                     <th>Year</th>
                     <th>Course</th>
-                    <th>Books (Pending)</th>
+                    <th>Books</th>
                     <th>Count</th>
                 </tr>
             </thead>
@@ -202,30 +232,40 @@ function displayStudentsList(students) {
         </table>
     `;
 
-    studentsList.innerHTML = tableHtml;
+    container.innerHTML = tableHtml;
 }
 
-// Toggle Students List
-function toggleStudentsList() {
-    const content = document.getElementById('issuedStudentsContent');
-    const btn = document.getElementById('toggleStudentsListBtn');
+// Filter Books List
+function filterBooksList() {
+    const yearFilter = document.getElementById('booksYearFilter').value;
+    const courseFilter = document.getElementById('booksCourseFilter').value;
 
-    if (content.style.display === 'none') {
-        content.style.display = 'block';
-        btn.textContent = '▼';
+    // Get current type books
+    let books;
+    if (currentBooksListType === 'issued') {
+        books = allBooksData;
+    } else if (currentBooksListType === 'returned') {
+        books = allBooksData.filter(book => book.status === 'returned');
     } else {
-        content.style.display = 'none';
-        btn.textContent = '▶';
+        books = allBooksData.filter(book => book.status === 'issued');
     }
-}
 
-// Filter Students List
-function filterStudentsList() {
-    const yearFilter = document.getElementById('yearFilter').value;
-    const courseFilter = document.getElementById('courseFilter').value;
+    // Group by student
+    const studentsWithBooks = {};
+    books.forEach(book => {
+        const regNo = book.student_reg_no;
+        if (!studentsWithBooks[regNo]) {
+            studentsWithBooks[regNo] = {
+                ...book.students,
+                books: []
+            };
+        }
+        studentsWithBooks[regNo].books.push(book);
+    });
 
-    let filtered = allIssuedStudentsData;
+    let filtered = Object.values(studentsWithBooks);
 
+    // Apply filters
     if (yearFilter) {
         filtered = filtered.filter(s => s.year === yearFilter);
     }
@@ -234,15 +274,37 @@ function filterStudentsList() {
         filtered = filtered.filter(s => s.course === courseFilter);
     }
 
-    displayStudentsList(filtered);
+    displayBooksList(filtered);
 }
 
-// Export to PDF
-function exportToPDF() {
-    const yearFilter = document.getElementById('yearFilter').value;
-    const courseFilter = document.getElementById('courseFilter').value;
+// Export Books List to PDF
+function exportBooksListToPDF() {
+    const yearFilter = document.getElementById('booksYearFilter').value;
+    const courseFilter = document.getElementById('booksCourseFilter').value;
 
-    let filtered = allIssuedStudentsData;
+    // Get filtered data
+    let books;
+    if (currentBooksListType === 'issued') {
+        books = allBooksData;
+    } else if (currentBooksListType === 'returned') {
+        books = allBooksData.filter(book => book.status === 'returned');
+    } else {
+        books = allBooksData.filter(book => book.status === 'issued');
+    }
+
+    const studentsWithBooks = {};
+    books.forEach(book => {
+        const regNo = book.student_reg_no;
+        if (!studentsWithBooks[regNo]) {
+            studentsWithBooks[regNo] = {
+                ...book.students,
+                books: []
+            };
+        }
+        studentsWithBooks[regNo].books.push(book);
+    });
+
+    let filtered = Object.values(studentsWithBooks);
 
     if (yearFilter) {
         filtered = filtered.filter(s => s.year === yearFilter);
@@ -253,16 +315,22 @@ function exportToPDF() {
     }
 
     if (filtered.length === 0) {
-        showToast('No students to export', 'warning');
+        showToast('No data to export', 'warning');
         return;
     }
+
+    const titles = {
+        'issued': 'Total Issued Books Report',
+        'returned': 'Total Returned Books Report',
+        'pending': 'Pending Books Report'
+    };
 
     // Create printable HTML
     const printContent = `
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Pending Returns Report</title>
+            <title>${titles[currentBooksListType]}</title>
             <style>
                 body { font-family: Arial, sans-serif; padding: 20px; }
                 h1 { text-align: center; color: #2563eb; }
@@ -276,7 +344,7 @@ function exportToPDF() {
             </style>
         </head>
         <body>
-            <h1>📚 Pending Returns Report</h1>
+            <h1>📚 ${titles[currentBooksListType]}</h1>
             <div class="info">
                 <p>Generated on: ${new Date().toLocaleString()}</p>
                 ${yearFilter ? `<p>Year: ${yearFilter}</p>` : ''}
@@ -291,7 +359,7 @@ function exportToPDF() {
                         <th>Reg No</th>
                         <th>Year</th>
                         <th>Course</th>
-                        <th>Books (Pending)</th>
+                        <th>Books</th>
                         <th>Count</th>
                     </tr>
                 </thead>
@@ -315,7 +383,6 @@ function exportToPDF() {
         </html>
     `;
 
-    // Open print dialog
     const printWindow = window.open('', '_blank');
     printWindow.document.write(printContent);
     printWindow.document.close();

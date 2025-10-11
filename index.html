@@ -17,55 +17,33 @@
             <!-- Dashboard Metrics Section -->
             <section class="dashboard-section">
                 <div class="metrics-grid">
-                    <div class="metric-card metric-issued">
+                    <div class="metric-card metric-issued clickable" id="issuedCard">
                         <div class="metric-icon">📚</div>
                         <div class="metric-content">
                             <div class="metric-value" id="totalIssuedBooks">0</div>
                             <div class="metric-label">Total Issued Books</div>
+                            <div class="metric-hint">Click to view details</div>
                         </div>
                     </div>
-                    <div class="metric-card metric-returned">
+                    <div class="metric-card metric-returned clickable" id="returnedCard">
                         <div class="metric-icon">✅</div>
                         <div class="metric-content">
                             <div class="metric-value" id="totalReturnedBooks">0</div>
                             <div class="metric-label">Total Returned Books</div>
+                            <div class="metric-hint">Click to view details</div>
                         </div>
                     </div>
-                    <div class="metric-card metric-pending">
+                    <div class="metric-card metric-pending clickable" id="pendingCard">
                         <div class="metric-icon">⏳</div>
                         <div class="metric-content">
                             <div class="metric-value" id="totalPendingBooks">0</div>
                             <div class="metric-label">Total Pending Books</div>
+                            <div class="metric-hint">Click to view details</div>
                         </div>
                     </div>
                 </div>
-
-                <!-- Issued Students List -->
-                <div class="issued-students-card">
-                    <div class="card-header" id="issuedStudentsTab">
-                        <h3>📋 Issued Students List (Pending Returns)</h3>
-                        <div class="header-actions">
-                            <button id="savePdfBtn" class="btn-action" title="Save as PDF">📄 Save PDF</button>
-                            <button id="refreshDashboardBtn" class="btn-refresh" title="Refresh Dashboard">🔄</button>
-                            <button id="toggleStudentsListBtn" class="btn-toggle">▼</button>
-                        </div>
-                    </div>
-                    <div id="issuedStudentsContent" class="issued-students-content">
-                        <div class="list-filters">
-                            <select id="yearFilter" class="filter-select">
-                                <option value="">All Years</option>
-                            </select>
-                            <select id="courseFilter" class="filter-select">
-                                <option value="">All Courses</option>
-                            </select>
-                        </div>
-                        <div id="issuedStudentsList" class="issued-students-list">
-                            <div class="loading-indicator">
-                                <div class="spinner"></div>
-                                <span>Loading...</span>
-                            </div>
-                        </div>
-                    </div>
+                <div class="dashboard-actions">
+                    <button id="refreshDashboardBtn" class="btn-refresh-dashboard">🔄 Refresh Dashboard</button>
                 </div>
             </section>
 
@@ -158,6 +136,38 @@
                 <div class="modal-footer">
                     <button id="cancelReturnBtn" class="btn btn-cancel">Cancel</button>
                     <button id="submitReturnBtn" class="btn btn-primary">Return Selected Books</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Books List Modal -->
+        <div id="booksListModal" class="modal">
+            <div class="modal-content modal-large">
+                <div class="modal-header">
+                    <h2 id="booksListTitle">Books List</h2>
+                    <span class="close-btn" data-modal="booksListModal">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="books-list-toolbar">
+                        <div class="list-filters">
+                            <select id="booksYearFilter" class="filter-select">
+                                <option value="">All Years</option>
+                            </select>
+                            <select id="booksCourseFilter" class="filter-select">
+                                <option value="">All Courses</option>
+                            </select>
+                        </div>
+                        <button id="exportPdfBtn" class="btn-action">📄 Export PDF</button>
+                    </div>
+                    <div id="booksListContainer" class="books-list-container">
+                        <div class="loading-indicator">
+                            <div class="spinner"></div>
+                            <span>Loading...</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="closeBooksListBtn" class="btn btn-cancel">Close</button>
                 </div>
             </div>
         </div>
