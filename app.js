@@ -6,9 +6,26 @@ let supabase = null;
 let selectedStudent = null;
 let bookEntryCount = 0;
 
+// Authentication credentials
+const VALID_CREDENTIALS = [
+    { username: 'admin', password: 'anandamc' },
+    { username: 'admin', password: 'teju2015' }
+];
+
+const CLEAR_DATA_PASSWORD = 'teju2015';
+
 // Initialize Application
 async function init() {
     try {
+        // Setup login event listener first (needed for login to work)
+        setupLoginListeners();
+
+        // Check authentication
+        if (!checkAuth()) {
+            showLoginModal();
+            return;
+        }
+
         // Load configuration
         const config = await loadConfig();
 
@@ -28,6 +45,83 @@ async function init() {
     }
 }
 
+// Setup Login Event Listeners (must be done before auth check)
+function setupLoginListeners() {
+    document.getElementById('loginForm').addEventListener('submit', handleLogin);
+}
+
+// Authentication Functions
+function checkAuth() {
+    return sessionStorage.getItem('authenticated') === 'true';
+}
+
+function setAuth(value) {
+    sessionStorage.setItem('authenticated', value.toString());
+}
+
+function showLoginModal() {
+    document.getElementById('loginModal').classList.add('active');
+    // Hide main content
+    document.querySelector('main').style.display = 'none';
+    document.querySelector('header').style.display = 'none';
+}
+
+function hideLoginModal() {
+    document.getElementById('loginModal').classList.remove('active');
+    // Show main content
+    document.querySelector('main').style.display = 'block';
+    document.querySelector('header').style.display = 'block';
+}
+
+async function handleLogin(event) {
+    event.preventDefault();
+
+    const username = document.getElementById('loginUsername').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    const errorDiv = document.getElementById('loginError');
+
+    // Validate credentials
+    const isValid = VALID_CREDENTIALS.some(
+        cred => cred.username === username && cred.password === password
+    );
+
+    if (isValid) {
+        setAuth(true);
+        errorDiv.style.display = 'none';
+        hideLoginModal();
+
+        // Initialize app after successful login
+        try {
+            const config = await loadConfig();
+            supabase = createClient(config.supabaseUrl, config.supabaseAnonKey);
+
+            // Setup all event listeners
+            setupEventListeners();
+
+            // Load dashboard
+            await loadDashboard();
+
+            showToast('Login successful!', 'success');
+        } catch (error) {
+            console.error('Initialization error:', error);
+            showToast('Failed to initialize application', 'error');
+        }
+    } else {
+        errorDiv.textContent = 'Invalid username or password';
+        errorDiv.style.display = 'block';
+        document.getElementById('loginPassword').value = '';
+    }
+}
+
+function handleLogout() {
+    setAuth(false);
+    sessionStorage.clear();
+    showToast('Logged out successfully', 'success');
+    setTimeout(() => {
+        window.location.reload();
+    }, 1000);
+}
+
 // Load Configuration
 async function loadConfig() {
     try {
@@ -44,6 +138,14 @@ async function loadConfig() {
 
 // Setup Event Listeners
 function setupEventListeners() {
+    // Logout button
+    document.getElementById('logoutBtn').addEventListener('click', handleLogout);
+
+    // Clear data button
+    document.getElementById('clearDataBtn').addEventListener('click', openClearDataModal);
+    document.getElementById('cancelClearBtn').addEventListener('click', () => closeModal('clearDataModal'));
+    document.getElementById('confirmClearBtn').addEventListener('click', handleClearData);
+
     // Search functionality
     const searchInput = document.getElementById('searchInput');
     const searchBtn = document.getElementById('searchBtn');
@@ -89,8 +191,8 @@ function setupEventListeners() {
         });
     });
 
-    // Close modal on backdrop click
-    document.querySelectorAll('.modal').forEach(modal => {
+    // Close modal on backdrop click (but not for login modal)
+    document.querySelectorAll('.modal:not(.modal-login)').forEach(modal => {
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
                 closeModal(modal.id);
@@ -103,6 +205,67 @@ function setupEventListeners() {
 let allBooksData = [];
 let currentBooksListType = 'pending';
 
+// Clear Data Functions
+function openClearDataModal() {
+    document.getElementById('clearDataPassword').value = '';
+    document.getElementById('clearDataError').style.display = 'none';
+    showModal('clearDataModal');
+}
+
+async function handleClearData() {
+    const password = document.getElementById('clearDataPassword').value;
+    const errorDiv = document.getElementById('clearDataError');
+
+    // Validate password
+    if (password !== CLEAR_DATA_PASSWORD) {
+        errorDiv.textContent = 'Incorrect password. Access denied.';
+        errorDiv.style.display = 'block';
+        return;
+    }
+
+    // Confirm deletion
+    const confirmed = confirm(
+        'Are you absolutely sure you want to delete ALL book records?\n\n' +
+        'This will delete:\n' +
+        '- All book issue records\n' +
+        '- All book return records\n\n' +
+        'Student data will be preserved.\n\n' +
+        'This action CANNOT be undone!\n\n' +
+        'Click OK to proceed or Cancel to abort.'
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        // Delete all records from book_issues table
+        const { error } = await supabase
+            .from('book_issues')
+            .delete()
+            .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all records
+
+        if (error) throw error;
+
+        showToast('All book data has been deleted successfully', 'success');
+        closeModal('clearDataModal');
+
+        // Reload dashboard to show zero counts
+        await loadDashboard();
+
+        // Clear search results
+        document.getElementById('resultsContainer').innerHTML = `
+            <div class="empty-state">
+                <p>🔍 Enter a search term to find students</p>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Clear data error:', error);
+        errorDiv.textContent = 'Failed to delete data: ' + error.message;
+        errorDiv.style.display = 'block';
+    }
+}
+
 // Load Dashboard Metrics
 async function loadDashboard() {
     try {
@@ -114,12 +277,12 @@ async function loadDashboard() {
         if (error) throw error;
 
         // Store globally
-        allBooksData = allBooks;
+        allBooksData = allBooks || [];
 
         // Calculate metrics - Fix: Total Issued - Total Returned = Total Pending
-        const totalIssued = allBooks.length;
-        const returnedBooks = allBooks.filter(book => book.status === 'returned');
-        const issuedBooks = allBooks.filter(book => book.status === 'issued');
+        const totalIssued = allBooks ? allBooks.length : 0;
+        const returnedBooks = allBooks ? allBooks.filter(book => book.status === 'returned') : [];
+        const issuedBooks = allBooks ? allBooks.filter(book => book.status === 'issued') : [];
         const totalReturned = returnedBooks.length;
         const totalPending = issuedBooks.length;
 
@@ -333,23 +496,80 @@ function exportBooksListToPDF() {
             <title>${titles[currentBooksListType]}</title>
             <style>
                 body { font-family: Arial, sans-serif; padding: 20px; }
-                h1 { text-align: center; color: #2563eb; }
-                .info { text-align: center; margin-bottom: 20px; color: #64748b; }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
-                th { background-color: #2563eb; color: white; }
+                h1 { text-align: center; color: #2563eb; margin-bottom: 10px; }
+                .metadata {
+                    text-align: center;
+                    margin-bottom: 5px;
+                    color: #64748b;
+                    font-size: 0.95em;
+                }
+                .info {
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    gap: 20px;
+                    margin-bottom: 20px;
+                    color: #2563eb;
+                    font-weight: 600;
+                    flex-wrap: wrap;
+                }
+                .info-item {
+                    white-space: nowrap;
+                }
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-top: 10px;
+                    table-layout: fixed;
+                }
+                th, td {
+                    border: 1px solid #ddd;
+                    padding: 8px;
+                    text-align: left;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+                th { background-color: #2563eb; color: white; font-size: 0.9em; }
                 tr:nth-child(even) { background-color: #f8fafc; }
-                .book-tag { display: inline-block; background: #e0e7ff; padding: 2px 8px; margin: 2px; border-radius: 4px; font-size: 0.85em; }
-                .count-badge { background: #ea580c; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold; }
+                td:nth-child(1) { width: 5%; }
+                td:nth-child(2) { width: 20%; white-space: normal; }
+                td:nth-child(3) { width: 12%; }
+                td:nth-child(4) { width: 8%; }
+                td:nth-child(5) { width: 12%; }
+                td:nth-child(6) { width: 35%; white-space: normal; word-wrap: break-word; }
+                td:nth-child(7) { width: 8%; text-align: center; }
+                .book-tag {
+                    display: inline-block;
+                    background: #e0e7ff;
+                    padding: 2px 6px;
+                    margin: 2px;
+                    border-radius: 3px;
+                    font-size: 0.8em;
+                    white-space: nowrap;
+                }
+                .count-badge {
+                    background: #ea580c;
+                    color: white;
+                    padding: 4px 10px;
+                    border-radius: 4px;
+                    font-weight: bold;
+                }
+                @media print {
+                    body { padding: 10px; }
+                    th, td { padding: 6px; font-size: 0.85em; }
+                }
             </style>
         </head>
         <body>
             <h1>📚 ${titles[currentBooksListType]}</h1>
+            <div class="metadata">Generated on: ${new Date().toLocaleString()}</div>
             <div class="info">
-                <p>Generated on: ${new Date().toLocaleString()}</p>
-                ${yearFilter ? `<p>Year: ${yearFilter}</p>` : ''}
-                ${courseFilter ? `<p>Course: ${courseFilter}</p>` : ''}
-                <p>Total Students: ${filtered.length}</p>
+                ${yearFilter ? `<span class="info-item">Year: ${yearFilter}</span>` : ''}
+                ${yearFilter && courseFilter ? '<span>|</span>' : ''}
+                ${courseFilter ? `<span class="info-item">Course: ${courseFilter}</span>` : ''}
+                ${(yearFilter || courseFilter) ? '<span>|</span>' : ''}
+                <span class="info-item">Total Students: ${filtered.length}</span>
             </div>
             <table>
                 <thead>

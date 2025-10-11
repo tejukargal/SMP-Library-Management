@@ -9,8 +9,23 @@
 <body>
     <div class="container">
         <header>
-            <h1>📚 Library Management System</h1>
-            <p class="subtitle">SMP Library Register</p>
+            <div class="header-content">
+                <div class="header-text">
+                    <h1>📚 SMP Library Management</h1>
+                    <p class="subtitle">Library Book Issue Register</p>
+                </div>
+                <div class="header-actions">
+                    <button id="clearDataBtn" class="btn-clear-icon" title="Clear All Book Data">
+                        🗑️
+                    </button>
+                    <button id="refreshDashboardBtn" class="btn-refresh-icon" title="Refresh Dashboard">
+                        🔄
+                    </button>
+                    <button id="logoutBtn" class="btn-logout-icon" title="Logout">
+                        🚪
+                    </button>
+                </div>
+            </div>
         </header>
 
         <main>
@@ -41,9 +56,6 @@
                             <div class="metric-hint">Click to view details</div>
                         </div>
                     </div>
-                </div>
-                <div class="dashboard-actions">
-                    <button id="refreshDashboardBtn" class="btn-refresh-dashboard">🔄 Refresh Dashboard</button>
                 </div>
             </section>
 
@@ -168,6 +180,56 @@
                 </div>
                 <div class="modal-footer">
                     <button id="closeBooksListBtn" class="btn btn-cancel">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Login Modal -->
+        <div id="loginModal" class="modal modal-login">
+            <div class="modal-content modal-login-content">
+                <div class="login-header">
+                    <h2>🔐 Library Management System</h2>
+                    <p class="login-subtitle">Please login to continue</p>
+                </div>
+                <div class="modal-body">
+                    <form id="loginForm" class="login-form">
+                        <div class="form-group">
+                            <label>Username</label>
+                            <input type="text" id="loginUsername" class="login-input" required autocomplete="username">
+                        </div>
+                        <div class="form-group">
+                            <label>Password</label>
+                            <input type="password" id="loginPassword" class="login-input" required autocomplete="current-password">
+                        </div>
+                        <div id="loginError" class="login-error" style="display: none;"></div>
+                        <button type="submit" class="btn btn-primary btn-login">Login</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Clear Data Confirmation Modal -->
+        <div id="clearDataModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>⚠️ Clear All Book Data</h2>
+                    <span class="close-btn" data-modal="clearDataModal">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="warning-message">
+                        <p><strong>WARNING:</strong> This will permanently delete ALL book issue and return records from the system.</p>
+                        <p>Student data will be preserved.</p>
+                        <p><strong>This action cannot be undone!</strong></p>
+                    </div>
+                    <div class="form-group" style="margin-top: 1.5rem;">
+                        <label>Enter password to confirm deletion:</label>
+                        <input type="password" id="clearDataPassword" class="login-input" placeholder="Enter password" autocomplete="off">
+                    </div>
+                    <div id="clearDataError" class="login-error" style="display: none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button id="cancelClearBtn" class="btn btn-cancel">Cancel</button>
+                    <button id="confirmClearBtn" class="btn btn-danger">Delete All Data</button>
                 </div>
             </div>
         </div>
