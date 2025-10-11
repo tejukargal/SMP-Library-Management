@@ -69,8 +69,12 @@ function setupEventListeners() {
     document.getElementById('submitReturnBtn').addEventListener('click', submitReturnBooks);
     document.getElementById('cancelReturnBtn').addEventListener('click', () => closeModal('returnModal'));
 
-    // Dashboard refresh
+    // Dashboard refresh and toggle
     document.getElementById('refreshDashboardBtn').addEventListener('click', loadDashboard);
+    document.getElementById('toggleStudentsListBtn').addEventListener('click', toggleStudentsList);
+    document.getElementById('savePdfBtn').addEventListener('click', exportToPDF);
+    document.getElementById('yearFilter').addEventListener('change', filterStudentsList);
+    document.getElementById('courseFilter').addEventListener('change', filterStudentsList);
 
     // Close buttons
     document.querySelectorAll('.close-btn').forEach(btn => {
@@ -90,6 +94,9 @@ function setupEventListeners() {
     });
 }
 
+// Global variable to store current students data for filtering
+let allIssuedStudentsData = [];
+
 // Load Dashboard Metrics and Issued Students List
 async function loadDashboard() {
     try {
@@ -100,13 +107,16 @@ async function loadDashboard() {
 
         if (error) throw error;
 
-        // Calculate metrics
-        const issuedBooks = allBooks.filter(book => book.status === 'issued');
+        // Calculate metrics - Fix: Total Issued - Total Returned = Total Pending
+        const totalIssued = allBooks.length;
         const returnedBooks = allBooks.filter(book => book.status === 'returned');
+        const issuedBooks = allBooks.filter(book => book.status === 'issued');
+        const totalReturned = returnedBooks.length;
+        const totalPending = issuedBooks.length;
 
-        document.getElementById('totalIssuedBooks').textContent = issuedBooks.length;
-        document.getElementById('totalReturnedBooks').textContent = returnedBooks.length;
-        document.getElementById('totalPendingBooks').textContent = issuedBooks.length;
+        document.getElementById('totalIssuedBooks').textContent = totalIssued;
+        document.getElementById('totalReturnedBooks').textContent = totalReturned;
+        document.getElementById('totalPendingBooks').textContent = totalPending;
 
         // Get unique students with issued books
         const studentsWithIssued = {};
@@ -121,36 +131,23 @@ async function loadDashboard() {
             studentsWithIssued[regNo].books.push(book);
         });
 
-        // Display issued students list
-        const studentsList = document.getElementById('issuedStudentsList');
-        const studentsArray = Object.values(studentsWithIssued);
+        // Store data globally for filtering
+        allIssuedStudentsData = Object.values(studentsWithIssued);
 
-        if (studentsArray.length === 0) {
-            studentsList.innerHTML = `
-                <div class="empty-state-small">
-                    <p>✨ No pending returns - All books are returned!</p>
-                </div>
-            `;
-            return;
-        }
+        // Populate filter dropdowns
+        const years = [...new Set(allIssuedStudentsData.map(s => s.year))].sort();
+        const courses = [...new Set(allIssuedStudentsData.map(s => s.course))].sort();
 
-        const studentsHtml = studentsArray.map(student => `
-            <div class="issued-student-item">
-                <div class="issued-student-info">
-                    <div class="issued-student-name">${escapeHtml(student.name)}</div>
-                    <div class="issued-student-details">
-                        <span>Reg No: ${escapeHtml(student.reg_no)}</span>
-                        <span>•</span>
-                        <span>${escapeHtml(student.course)} - ${escapeHtml(student.year)}</span>
-                    </div>
-                </div>
-                <div class="issued-student-count">
-                    <span class="books-pending-badge">${student.books.length} ${student.books.length === 1 ? 'Book' : 'Books'}</span>
-                </div>
-            </div>
-        `).join('');
+        const yearFilter = document.getElementById('yearFilter');
+        const courseFilter = document.getElementById('courseFilter');
 
-        studentsList.innerHTML = studentsHtml;
+        yearFilter.innerHTML = '<option value="">All Years</option>' +
+            years.map(year => `<option value="${year}">${year}</option>`).join('');
+        courseFilter.innerHTML = '<option value="">All Courses</option>' +
+            courses.map(course => `<option value="${course}">${course}</option>`).join('');
+
+        // Display the list
+        displayStudentsList(allIssuedStudentsData);
     } catch (error) {
         console.error('Load dashboard error:', error);
         document.getElementById('issuedStudentsList').innerHTML = `
@@ -159,6 +156,170 @@ async function loadDashboard() {
             </div>
         `;
     }
+}
+
+// Display Students List in Table Format
+function displayStudentsList(students) {
+    const studentsList = document.getElementById('issuedStudentsList');
+
+    if (students.length === 0) {
+        studentsList.innerHTML = `
+            <div class="empty-state-small">
+                <p>✨ No pending returns - All books are returned!</p>
+            </div>
+        `;
+        return;
+    }
+
+    const tableHtml = `
+        <table class="students-table">
+            <thead>
+                <tr>
+                    <th>S.No</th>
+                    <th>Name</th>
+                    <th>Reg No</th>
+                    <th>Year</th>
+                    <th>Course</th>
+                    <th>Books (Pending)</th>
+                    <th>Count</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${students.map((student, index) => `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>${escapeHtml(student.name)}</td>
+                        <td>${escapeHtml(student.reg_no)}</td>
+                        <td>${escapeHtml(student.year)}</td>
+                        <td>${escapeHtml(student.course)}</td>
+                        <td class="books-cell">
+                            ${student.books.map(book => `<span class="book-tag">${escapeHtml(book.book_name)}</span>`).join(' ')}
+                        </td>
+                        <td><span class="count-badge">${student.books.length}</span></td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+
+    studentsList.innerHTML = tableHtml;
+}
+
+// Toggle Students List
+function toggleStudentsList() {
+    const content = document.getElementById('issuedStudentsContent');
+    const btn = document.getElementById('toggleStudentsListBtn');
+
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        btn.textContent = '▼';
+    } else {
+        content.style.display = 'none';
+        btn.textContent = '▶';
+    }
+}
+
+// Filter Students List
+function filterStudentsList() {
+    const yearFilter = document.getElementById('yearFilter').value;
+    const courseFilter = document.getElementById('courseFilter').value;
+
+    let filtered = allIssuedStudentsData;
+
+    if (yearFilter) {
+        filtered = filtered.filter(s => s.year === yearFilter);
+    }
+
+    if (courseFilter) {
+        filtered = filtered.filter(s => s.course === courseFilter);
+    }
+
+    displayStudentsList(filtered);
+}
+
+// Export to PDF
+function exportToPDF() {
+    const yearFilter = document.getElementById('yearFilter').value;
+    const courseFilter = document.getElementById('courseFilter').value;
+
+    let filtered = allIssuedStudentsData;
+
+    if (yearFilter) {
+        filtered = filtered.filter(s => s.year === yearFilter);
+    }
+
+    if (courseFilter) {
+        filtered = filtered.filter(s => s.course === courseFilter);
+    }
+
+    if (filtered.length === 0) {
+        showToast('No students to export', 'warning');
+        return;
+    }
+
+    // Create printable HTML
+    const printContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Pending Returns Report</title>
+            <style>
+                body { font-family: Arial, sans-serif; padding: 20px; }
+                h1 { text-align: center; color: #2563eb; }
+                .info { text-align: center; margin-bottom: 20px; color: #64748b; }
+                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+                th { background-color: #2563eb; color: white; }
+                tr:nth-child(even) { background-color: #f8fafc; }
+                .book-tag { display: inline-block; background: #e0e7ff; padding: 2px 8px; margin: 2px; border-radius: 4px; font-size: 0.85em; }
+                .count-badge { background: #ea580c; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold; }
+            </style>
+        </head>
+        <body>
+            <h1>📚 Pending Returns Report</h1>
+            <div class="info">
+                <p>Generated on: ${new Date().toLocaleString()}</p>
+                ${yearFilter ? `<p>Year: ${yearFilter}</p>` : ''}
+                ${courseFilter ? `<p>Course: ${courseFilter}</p>` : ''}
+                <p>Total Students: ${filtered.length}</p>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>S.No</th>
+                        <th>Name</th>
+                        <th>Reg No</th>
+                        <th>Year</th>
+                        <th>Course</th>
+                        <th>Books (Pending)</th>
+                        <th>Count</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${filtered.map((student, index) => `
+                        <tr>
+                            <td>${index + 1}</td>
+                            <td>${escapeHtml(student.name)}</td>
+                            <td>${escapeHtml(student.reg_no)}</td>
+                            <td>${escapeHtml(student.year)}</td>
+                            <td>${escapeHtml(student.course)}</td>
+                            <td>
+                                ${student.books.map(book => `<span class="book-tag">${escapeHtml(book.book_name)}</span>`).join(' ')}
+                            </td>
+                            <td><span class="count-badge">${student.books.length}</span></td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </body>
+        </html>
+    `;
+
+    // Open print dialog
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+    printWindow.print();
 }
 
 // Search Students

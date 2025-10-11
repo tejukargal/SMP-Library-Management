@@ -154,6 +154,29 @@ header h1 {
     color: var(--text-primary);
 }
 
+.header-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.btn-action {
+    background: var(--success-color);
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.btn-action:hover {
+    background: #15803d;
+    transform: translateY(-1px);
+}
+
 .btn-refresh {
     background: var(--primary-color);
     color: white;
@@ -170,56 +193,113 @@ header h1 {
     transform: rotate(90deg);
 }
 
-.issued-students-list {
-    max-height: 400px;
-    overflow-y: auto;
-    padding: 1rem;
+.btn-toggle {
+    background: var(--secondary-color);
+    color: white;
+    border: none;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: all 0.2s;
+    min-width: 40px;
 }
 
-.issued-student-item {
+.btn-toggle:hover {
+    background: #475569;
+}
+
+.issued-students-content {
+    transition: all 0.3s ease-in-out;
+}
+
+.list-filters {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
+    gap: 1rem;
     padding: 1rem;
     background: var(--background);
-    border: 1px solid var(--border-color);
-    border-radius: 0.5rem;
-    margin-bottom: 0.75rem;
-    transition: all 0.2s;
+    border-bottom: 1px solid var(--border-color);
 }
 
-.issued-student-item:hover {
-    border-color: var(--primary-color);
+.filter-select {
+    padding: 0.5rem 1rem;
+    border: 2px solid var(--border-color);
+    border-radius: 0.375rem;
+    font-size: 0.9rem;
+    outline: none;
+    cursor: pointer;
+    transition: all 0.2s;
     background: white;
 }
 
-.issued-student-info {
-    flex: 1;
+.filter-select:focus {
+    border-color: var(--primary-color);
 }
 
-.issued-student-name {
+.issued-students-list {
+    max-height: 500px;
+    overflow-y: auto;
+    overflow-x: auto;
+}
+
+/* Students Table */
+.students-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.students-table thead {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    color: white;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.students-table th {
+    padding: 0.875rem;
+    text-align: left;
     font-weight: 600;
-    font-size: 1rem;
-    color: var(--text-primary);
-    margin-bottom: 0.25rem;
+    white-space: nowrap;
 }
 
-.issued-student-details {
-    font-size: 0.875rem;
-    color: var(--text-secondary);
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
+.students-table td {
+    padding: 0.875rem;
+    border-bottom: 1px solid var(--border-color);
 }
 
-.books-pending-badge {
+.students-table tbody tr {
+    transition: all 0.2s;
+}
+
+.students-table tbody tr:hover {
+    background: #f1f5f9;
+}
+
+.books-cell {
+    max-width: 400px;
+}
+
+.book-tag {
+    display: inline-block;
+    background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+    color: #1e40af;
+    padding: 0.25rem 0.625rem;
+    margin: 0.125rem;
+    border-radius: 0.25rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.count-badge {
     background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
     color: white;
-    padding: 0.5rem 1rem;
+    padding: 0.375rem 0.75rem;
     border-radius: 0.375rem;
-    font-weight: 600;
+    font-weight: 700;
     font-size: 0.875rem;
-    white-space: nowrap;
 }
 
 .empty-state-small {
@@ -239,9 +319,15 @@ header h1 {
     margin-right: 0.5rem;
 }
 
-/* Search Section */
+/* Search Section - Sticky */
 .search-section {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--background);
+    padding: 1rem 0;
     margin-bottom: 2rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .search-box {
@@ -559,27 +645,38 @@ header h1 {
     gap: 1rem;
 }
 
-/* Student Info in Modal */
-.student-info {
-    background: var(--background);
-    padding: 1.25rem;
+/* Student Info in Modal - Horizontal */
+.student-info-horizontal {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    padding: 1rem 1.5rem;
     border-radius: 0.5rem;
     margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    border-left: 4px solid var(--primary-color);
 }
 
-.student-info h3 {
-    font-size: 1.25rem;
-    margin-bottom: 0.75rem;
+.student-info-name {
+    font-size: 1.125rem;
+    font-weight: 700;
     color: var(--primary-color);
 }
 
-.student-info p {
-    margin-bottom: 0.25rem;
+.student-info-divider {
+    color: var(--border-color);
+    font-weight: bold;
+}
+
+.student-info-horizontal span:not(.student-info-divider):not(.student-info-name) {
+    font-size: 0.9rem;
     color: var(--text-secondary);
 }
 
-.student-info strong {
+.student-info-horizontal strong {
     color: var(--text-primary);
+    font-weight: 600;
 }
 
 /* Book Entry Form */
@@ -832,14 +929,44 @@ header h1 {
         font-size: 1.75rem;
     }
 
+    .header-actions {
+        flex-wrap: wrap;
+    }
+
+    .list-filters {
+        flex-direction: column;
+    }
+
+    .filter-select {
+        width: 100%;
+    }
+
     .issued-students-list {
         max-height: 300px;
     }
 
-    .issued-student-item {
+    .students-table {
+        font-size: 0.8rem;
+    }
+
+    .students-table th,
+    .students-table td {
+        padding: 0.5rem;
+    }
+
+    .book-tag {
+        font-size: 0.75rem;
+        padding: 0.2rem 0.5rem;
+    }
+
+    .student-info-horizontal {
         flex-direction: column;
         align-items: flex-start;
-        gap: 0.75rem;
+        gap: 0.5rem;
+    }
+
+    .student-info-divider {
+        display: none;
     }
 
     .search-box {

@@ -42,14 +42,28 @@
 
                 <!-- Issued Students List -->
                 <div class="issued-students-card">
-                    <div class="card-header">
+                    <div class="card-header" id="issuedStudentsTab">
                         <h3>📋 Issued Students List (Pending Returns)</h3>
-                        <button id="refreshDashboardBtn" class="btn-refresh" title="Refresh Dashboard">🔄</button>
+                        <div class="header-actions">
+                            <button id="savePdfBtn" class="btn-action" title="Save as PDF">📄 Save PDF</button>
+                            <button id="refreshDashboardBtn" class="btn-refresh" title="Refresh Dashboard">🔄</button>
+                            <button id="toggleStudentsListBtn" class="btn-toggle">▼</button>
+                        </div>
                     </div>
-                    <div id="issuedStudentsList" class="issued-students-list">
-                        <div class="loading-indicator">
-                            <div class="spinner"></div>
-                            <span>Loading...</span>
+                    <div id="issuedStudentsContent" class="issued-students-content">
+                        <div class="list-filters">
+                            <select id="yearFilter" class="filter-select">
+                                <option value="">All Years</option>
+                            </select>
+                            <select id="courseFilter" class="filter-select">
+                                <option value="">All Courses</option>
+                            </select>
+                        </div>
+                        <div id="issuedStudentsList" class="issued-students-list">
+                            <div class="loading-indicator">
+                                <div class="spinner"></div>
+                                <span>Loading...</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -90,11 +104,14 @@
                     <span class="close-btn" data-modal="issueModal">&times;</span>
                 </div>
                 <div class="modal-body">
-                    <div class="student-info">
-                        <h3 id="issueStudentName"></h3>
-                        <p><strong>Reg No:</strong> <span id="issueStudentRegNo"></span></p>
-                        <p><strong>Course:</strong> <span id="issueStudentCourse"></span></p>
-                        <p><strong>Year:</strong> <span id="issueStudentYear"></span></p>
+                    <div class="student-info-horizontal">
+                        <span class="student-info-name" id="issueStudentName"></span>
+                        <span class="student-info-divider">|</span>
+                        <span><strong>Reg No:</strong> <span id="issueStudentRegNo"></span></span>
+                        <span class="student-info-divider">|</span>
+                        <span><strong>Course:</strong> <span id="issueStudentCourse"></span></span>
+                        <span class="student-info-divider">|</span>
+                        <span><strong>Year:</strong> <span id="issueStudentYear"></span></span>
                     </div>
 
                     <!-- Previously Issued Books Section -->
@@ -128,9 +145,10 @@
                     <span class="close-btn" data-modal="returnModal">&times;</span>
                 </div>
                 <div class="modal-body">
-                    <div class="student-info">
-                        <h3 id="returnStudentName"></h3>
-                        <p><strong>Reg No:</strong> <span id="returnStudentRegNo"></span></p>
+                    <div class="student-info-horizontal">
+                        <span class="student-info-name" id="returnStudentName"></span>
+                        <span class="student-info-divider">|</span>
+                        <span><strong>Reg No:</strong> <span id="returnStudentRegNo"></span></span>
                     </div>
 
                     <div id="issuedBooksContainer" class="issued-books-container">
