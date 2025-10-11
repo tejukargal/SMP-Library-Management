@@ -57,12 +57,6 @@ function setupEventListeners() {
         }
     });
 
-    // Context menu
-    document.addEventListener('click', hideContextMenu);
-    document.getElementById('menuIssueBooks').addEventListener('click', openIssueModal);
-    document.getElementById('menuReturnBooks').addEventListener('click', openReturnModal);
-    document.getElementById('menuClose').addEventListener('click', hideContextMenu);
-
     // Issue Modal
     document.getElementById('addBookBtn').addEventListener('click', addBookEntry);
     document.getElementById('submitIssueBtn').addEventListener('click', submitIssueBooks);
@@ -127,7 +121,7 @@ async function performSearch() {
 }
 
 // Display Search Results
-function displayResults(students) {
+async function displayResults(students) {
     const resultsContainer = document.getElementById('resultsContainer');
 
     if (students.length === 0) {
@@ -139,16 +133,34 @@ function displayResults(students) {
         return;
     }
 
+    // Fetch book statistics for all students
+    const studentsWithStats = await Promise.all(students.map(async (student) => {
+        const stats = await getBookStatistics(student.reg_no);
+        return { ...student, ...stats };
+    }));
+
     const listHtml = `
         <div class="student-list">
-            ${students.map(student => `
-                <div class="student-item" data-student='${JSON.stringify(student)}'>
-                    <div class="student-name">${escapeHtml(student.name)}</div>
-                    <div class="student-details">
-                        <span><strong>Reg No:</strong> ${escapeHtml(student.reg_no)}</span>
-                        <span><strong>Father:</strong> ${escapeHtml(student.father)}</span>
-                        <span><strong>Year:</strong> ${escapeHtml(student.year)}</span>
-                        <span><strong>Course:</strong> ${escapeHtml(student.course)}</span>
+            ${studentsWithStats.map(student => `
+                <div class="student-item">
+                    <div class="student-item-content">
+                        <div class="student-info-section">
+                            <div class="student-name">${escapeHtml(student.name)}</div>
+                            <div class="student-details">
+                                <span><strong>Reg No:</strong> ${escapeHtml(student.reg_no)}</span>
+                                <span><strong>Father:</strong> ${escapeHtml(student.father)}</span>
+                                <span><strong>Year:</strong> ${escapeHtml(student.year)}</span>
+                                <span><strong>Course:</strong> ${escapeHtml(student.course)}</span>
+                            </div>
+                            <div class="book-stats">
+                                <span class="stat-badge stat-issued">📚 Issued: ${student.issued || 0}</span>
+                                <span class="stat-badge stat-returned">✅ Returned: ${student.returned || 0}</span>
+                            </div>
+                        </div>
+                        <div class="student-actions">
+                            <button class="btn btn-issue" onclick="openIssueModalForStudent('${escapeHtml(student.reg_no)}')">📖 Issue Books</button>
+                            <button class="btn btn-return" onclick="openReturnModalForStudent('${escapeHtml(student.reg_no)}')">🔄 Return Books</button>
+                        </div>
                     </div>
                 </div>
             `).join('')}
@@ -156,58 +168,66 @@ function displayResults(students) {
     `;
 
     resultsContainer.innerHTML = listHtml;
-
-    // Add right-click listeners
-    document.querySelectorAll('.student-item').forEach(item => {
-        item.addEventListener('contextmenu', showContextMenu);
-    });
 }
 
-// Show Context Menu
-function showContextMenu(e) {
-    e.preventDefault();
+// Get Book Statistics for a Student
+async function getBookStatistics(regNo) {
+    try {
+        const { data, error } = await supabase
+            .from('book_issues')
+            .select('status')
+            .eq('student_reg_no', regNo);
 
-    const studentData = e.currentTarget.dataset.student;
-    selectedStudent = JSON.parse(studentData);
+        if (error) throw error;
 
-    const contextMenu = document.getElementById('contextMenu');
-    contextMenu.style.display = 'block';
+        const issued = data.filter(book => book.status === 'issued').length;
+        const returned = data.filter(book => book.status === 'returned').length;
 
-    // Get menu dimensions
-    const menuWidth = contextMenu.offsetWidth || 200;
-    const menuHeight = contextMenu.offsetHeight || 150;
-
-    // Get viewport dimensions
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-
-    // Calculate position
-    let left = e.pageX;
-    let top = e.pageY;
-
-    // Adjust if menu would go off right edge
-    if (left + menuWidth > viewportWidth + window.scrollX) {
-        left = viewportWidth + window.scrollX - menuWidth - 10;
+        return { issued, returned };
+    } catch (error) {
+        console.error('Error fetching book statistics:', error);
+        return { issued: 0, returned: 0 };
     }
-
-    // Adjust if menu would go off bottom edge
-    if (top + menuHeight > viewportHeight + window.scrollY) {
-        top = viewportHeight + window.scrollY - menuHeight - 10;
-    }
-
-    contextMenu.style.left = `${left}px`;
-    contextMenu.style.top = `${top}px`;
 }
 
-// Hide Context Menu
-function hideContextMenu() {
-    document.getElementById('contextMenu').style.display = 'none';
+// Open Issue Modal for Student (called from button)
+window.openIssueModalForStudent = async function(regNo) {
+    // Find student data
+    const { data, error } = await supabase
+        .from('students')
+        .select('*')
+        .eq('reg_no', regNo)
+        .single();
+
+    if (error || !data) {
+        showToast('Error loading student data', 'error');
+        return;
+    }
+
+    selectedStudent = data;
+    openIssueModal();
+}
+
+// Open Return Modal for Student (called from button)
+window.openReturnModalForStudent = async function(regNo) {
+    // Find student data
+    const { data, error } = await supabase
+        .from('students')
+        .select('*')
+        .eq('reg_no', regNo)
+        .single();
+
+    if (error || !data) {
+        showToast('Error loading student data', 'error');
+        return;
+    }
+
+    selectedStudent = data;
+    openReturnModal();
 }
 
 // Open Issue Books Modal
 async function openIssueModal() {
-    hideContextMenu();
-
     if (!selectedStudent) return;
 
     // Set student info
@@ -216,8 +236,15 @@ async function openIssueModal() {
     document.getElementById('issueStudentCourse').textContent = selectedStudent.course;
     document.getElementById('issueStudentYear').textContent = selectedStudent.year;
 
+    // Get the count of all books (issued + returned) for this student to start numbering
+    const { data, error } = await supabase
+        .from('book_issues')
+        .select('id')
+        .eq('student_reg_no', selectedStudent.reg_no);
+
+    bookEntryCount = data ? data.length : 0;
+
     // Reset books container
-    bookEntryCount = 0;
     document.getElementById('booksContainer').innerHTML = '';
 
     // Load previously issued books
@@ -272,15 +299,19 @@ async function loadPreviouslyIssuedBooks() {
 function addBookEntry() {
     bookEntryCount++;
     const container = document.getElementById('booksContainer');
+    const currentEntries = container.querySelectorAll('.book-entry').length;
 
     const bookEntry = document.createElement('div');
     bookEntry.className = 'book-entry';
     bookEntry.dataset.bookId = bookEntryCount;
 
+    // Auto-generate book number as "Book X"
+    const autoBookNumber = `Book ${bookEntryCount + 1}`;
+
     bookEntry.innerHTML = `
         <div class="book-entry-header">
-            <span class="book-entry-title">Book ${bookEntryCount}</span>
-            ${bookEntryCount > 1 ? '<button class="remove-book-btn" onclick="removeBookEntry(this)">Remove</button>' : ''}
+            <span class="book-entry-title">Adding: ${autoBookNumber}</span>
+            ${currentEntries > 0 ? '<button class="remove-book-btn" onclick="removeBookEntry(this)">Remove</button>' : ''}
         </div>
         <div class="form-grid">
             <div class="form-group full-width">
@@ -293,7 +324,7 @@ function addBookEntry() {
             </div>
             <div class="form-group">
                 <label>Book Number *</label>
-                <input type="text" class="book-no" required>
+                <input type="text" class="book-no" value="${autoBookNumber}" required readonly>
             </div>
             <div class="form-group full-width">
                 <label>Date of Issue *</label>
@@ -379,8 +410,6 @@ async function submitIssueBooks() {
 
 // Open Return Books Modal
 async function openReturnModal() {
-    hideContextMenu();
-
     if (!selectedStudent) return;
 
     // Set student info
