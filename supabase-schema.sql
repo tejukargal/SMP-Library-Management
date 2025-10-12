@@ -1,19 +1,24 @@
 -- Library Management System Database Schema
 
 -- Create students table
+-- Note: Composite primary key (reg_no, course) because EE (Unaided) and other courses (Aided)
+-- have separate Reg No sequences that may overlap, representing different students
 CREATE TABLE IF NOT EXISTS students (
-    reg_no TEXT PRIMARY KEY,
+    reg_no TEXT NOT NULL,
     name TEXT NOT NULL,
     father TEXT NOT NULL,
     year TEXT NOT NULL,
     course TEXT NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+    in_out TEXT DEFAULT 'In',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+    PRIMARY KEY (reg_no, course)
 );
 
 -- Create book_issues table
 CREATE TABLE IF NOT EXISTS book_issues (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_reg_no TEXT NOT NULL REFERENCES students(reg_no) ON DELETE CASCADE,
+    student_reg_no TEXT NOT NULL,
+    student_course TEXT NOT NULL,
     book_name TEXT NOT NULL,
     author TEXT NOT NULL,
     book_no TEXT NOT NULL,
@@ -21,7 +26,8 @@ CREATE TABLE IF NOT EXISTS book_issues (
     return_date DATE,
     status TEXT NOT NULL CHECK (status IN ('issued', 'returned')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+    FOREIGN KEY (student_reg_no, student_course) REFERENCES students(reg_no, course) ON DELETE CASCADE
 );
 
 -- Create index for faster lookups

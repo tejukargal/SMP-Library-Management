@@ -31,18 +31,20 @@ async function importStudents() {
             name: record['Student Name']?.trim(),
             father: record['Father Name']?.trim(),
             year: record['Year']?.trim(),
-            course: record['Course']?.trim()
+            course: record['Course']?.trim(),
+            in_out: record['In/Out']?.trim() || 'In'
         })).filter(student =>
             student.reg_no && student.name && student.father && student.year && student.course
         );
 
-        // Remove duplicates by reg_no, keeping the first occurrence
+        // Remove duplicates by (reg_no, course) combination, keeping the first occurrence
         const uniqueStudents = [];
-        const seenRegNos = new Set();
+        const seenKeys = new Set();
         for (const student of students) {
-            if (!seenRegNos.has(student.reg_no)) {
+            const uniqueKey = `${student.reg_no}_${student.course}`;
+            if (!seenKeys.has(uniqueKey)) {
                 uniqueStudents.push(student);
-                seenRegNos.add(student.reg_no);
+                seenKeys.add(uniqueKey);
             }
         }
 
@@ -58,7 +60,7 @@ async function importStudents() {
 
             const { data, error } = await supabase
                 .from('students')
-                .upsert(batch, { onConflict: 'reg_no' });
+                .upsert(batch, { onConflict: 'reg_no,course' });
 
             if (error) {
                 console.error(`Error in batch ${i / batchSize + 1}:`, error.message);

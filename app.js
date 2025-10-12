@@ -13,6 +13,7 @@ const VALID_CREDENTIALS = [
 ];
 
 const CLEAR_DATA_PASSWORD = 'teju2015';
+const BACKUP_PASSWORD = 'teju2015'; // Password for export/import operations
 
 // Initialize Application
 async function init() {
@@ -122,6 +123,21 @@ function handleLogout() {
     }, 1000);
 }
 
+// Hamburger Menu Functions
+function openHamburgerMenu() {
+    document.getElementById('hamburgerMenu').classList.add('active');
+    document.getElementById('menuOverlay').classList.add('active');
+    // Prevent body scroll when menu is open
+    document.body.style.overflow = 'hidden';
+}
+
+function closeHamburgerMenu() {
+    document.getElementById('hamburgerMenu').classList.remove('active');
+    document.getElementById('menuOverlay').classList.remove('active');
+    // Restore body scroll
+    document.body.style.overflow = '';
+}
+
 // Load Configuration
 async function loadConfig() {
     try {
@@ -138,21 +154,55 @@ async function loadConfig() {
 
 // Setup Event Listeners
 function setupEventListeners() {
+    // Hamburger menu
+    document.getElementById('hamburgerMenuBtn').addEventListener('click', openHamburgerMenu);
+    document.getElementById('closeMenuBtn').addEventListener('click', closeHamburgerMenu);
+    document.getElementById('menuOverlay').addEventListener('click', closeHamburgerMenu);
+
     // Logout button
-    document.getElementById('logoutBtn').addEventListener('click', handleLogout);
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+        closeHamburgerMenu();
+        handleLogout();
+    });
+
+    // Export and Import buttons
+    document.getElementById('exportDataBtn').addEventListener('click', () => {
+        closeHamburgerMenu();
+        handleExportData();
+    });
+    document.getElementById('importDataBtn').addEventListener('click', () => {
+        closeHamburgerMenu();
+        handleImportData();
+    });
+    document.getElementById('importFileInput').addEventListener('change', processImportFile);
 
     // Clear data button
-    document.getElementById('clearDataBtn').addEventListener('click', openClearDataModal);
+    document.getElementById('clearDataBtn').addEventListener('click', () => {
+        closeHamburgerMenu();
+        openClearDataModal();
+    });
     document.getElementById('cancelClearBtn').addEventListener('click', () => closeModal('clearDataModal'));
     document.getElementById('confirmClearBtn').addEventListener('click', handleClearData);
+
+    // About button
+    document.getElementById('aboutBtn').addEventListener('click', () => {
+        closeHamburgerMenu();
+        showModal('aboutModal');
+    });
+    document.getElementById('closeAboutBtn').addEventListener('click', () => closeModal('aboutModal'));
 
     // Search functionality
     const searchInput = document.getElementById('searchInput');
     const searchBtn = document.getElementById('searchBtn');
 
-    // Convert search input to uppercase dynamically
+    // Convert search input to uppercase dynamically and restore dashboard list when cleared
     searchInput.addEventListener('input', (e) => {
         e.target.value = e.target.value.toUpperCase();
+
+        // If search is cleared, restore dashboard students list
+        if (e.target.value.trim() === '') {
+            loadDashboardStudentsList();
+        }
     });
 
     searchBtn.addEventListener('click', performSearch);
@@ -173,6 +223,7 @@ function setupEventListeners() {
 
     // Dashboard and metric cards
     document.getElementById('refreshDashboardBtn').addEventListener('click', loadDashboard);
+    document.getElementById('studentsCard').addEventListener('click', showStudentsBreakdown);
     document.getElementById('issuedCard').addEventListener('click', () => showBooksList('issued'));
     document.getElementById('returnedCard').addEventListener('click', () => showBooksList('returned'));
     document.getElementById('pendingCard').addEventListener('click', () => showBooksList('pending'));
@@ -182,6 +233,9 @@ function setupEventListeners() {
     document.getElementById('booksYearFilter').addEventListener('change', filterBooksList);
     document.getElementById('booksCourseFilter').addEventListener('change', filterBooksList);
     document.getElementById('exportPdfBtn').addEventListener('click', exportBooksListToPDF);
+
+    // Students modal
+    document.getElementById('closeStudentsBtn').addEventListener('click', () => closeModal('studentsModal'));
 
     // Close buttons
     document.querySelectorAll('.close-btn').forEach(btn => {
@@ -204,6 +258,7 @@ function setupEventListeners() {
 // Global variables to store books data
 let allBooksData = [];
 let currentBooksListType = 'pending';
+let studentsData = null; // Cache for students data
 
 // Clear Data Functions
 function openClearDataModal() {
@@ -250,19 +305,224 @@ async function handleClearData() {
         showToast('All book data has been deleted successfully', 'success');
         closeModal('clearDataModal');
 
-        // Reload dashboard to show zero counts
+        // Reload dashboard (clears search and shows dashboard list)
         await loadDashboard();
-
-        // Clear search results
-        document.getElementById('resultsContainer').innerHTML = `
-            <div class="empty-state">
-                <p>🔍 Enter a search term to find students</p>
-            </div>
-        `;
     } catch (error) {
         console.error('Clear data error:', error);
         errorDiv.textContent = 'Failed to delete data: ' + error.message;
         errorDiv.style.display = 'block';
+    }
+}
+
+// Export Data Functions
+async function handleExportData() {
+    // Prompt for password
+    const password = prompt('Enter password to export backup:');
+
+    if (!password) {
+        showToast('Export cancelled', 'warning');
+        return;
+    }
+
+    if (password !== BACKUP_PASSWORD) {
+        showToast('Incorrect password. Access denied.', 'error');
+        return;
+    }
+
+    try {
+        showToast('Preparing data export...', 'info');
+
+        // Fetch all students
+        const { data: students, error: studentsError } = await supabase
+            .from('students')
+            .select('*')
+            .order('name');
+
+        if (studentsError) throw studentsError;
+
+        // Fetch all book issues
+        const { data: bookIssues, error: booksError } = await supabase
+            .from('book_issues')
+            .select('*')
+            .order('created_at');
+
+        if (booksError) throw booksError;
+
+        // Create backup object
+        const backupData = {
+            version: '1.0',
+            exportDate: new Date().toISOString(),
+            exportedBy: 'SMP Library Management System',
+            students: students || [],
+            book_issues: bookIssues || [],
+            statistics: {
+                totalStudents: students?.length || 0,
+                totalBookRecords: bookIssues?.length || 0,
+                issuedBooks: bookIssues?.filter(b => b.status === 'issued').length || 0,
+                returnedBooks: bookIssues?.filter(b => b.status === 'returned').length || 0
+            }
+        };
+
+        // Convert to JSON
+        const jsonString = JSON.stringify(backupData, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+
+        // Create filename with timestamp
+        const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
+        const filename = `SMP_Library_Backup_${timestamp}.json`;
+
+        // Create download link
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        // Show success message with file location
+        showToast(
+            `✅ Data exported successfully!\n\nFile: ${filename}\nLocation: Downloads folder\n\nStudents: ${backupData.statistics.totalStudents} | Books: ${backupData.statistics.totalBookRecords}`,
+            'success'
+        );
+
+        console.log('Export completed:', filename);
+    } catch (error) {
+        console.error('Export error:', error);
+        showToast('Failed to export data: ' + error.message, 'error');
+    }
+}
+
+// Import Data Functions
+async function handleImportData() {
+    // Prompt for password
+    const password = prompt('Enter password to import backup:');
+
+    if (!password) {
+        showToast('Import cancelled', 'warning');
+        return;
+    }
+
+    if (password !== BACKUP_PASSWORD) {
+        showToast('Incorrect password. Access denied.', 'error');
+        return;
+    }
+
+    // Trigger file input click
+    const fileInput = document.getElementById('importFileInput');
+    fileInput.value = ''; // Reset file input
+    fileInput.click();
+}
+
+// Handle file selection and import
+async function processImportFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.name.endsWith('.json')) {
+        showToast('Please select a valid JSON backup file', 'error');
+        return;
+    }
+
+    try {
+        showToast('Reading backup file...', 'info');
+
+        // Read file content
+        const fileContent = await file.text();
+        const backupData = JSON.parse(fileContent);
+
+        // Validate backup structure
+        if (!backupData.version || !backupData.students || !backupData.book_issues) {
+            throw new Error('Invalid backup file structure');
+        }
+
+        // Confirm restore operation
+        const confirmed = confirm(
+            `⚠️ RESTORE DATA FROM BACKUP\n\n` +
+            `Backup Date: ${new Date(backupData.exportDate).toLocaleString()}\n` +
+            `Students: ${backupData.students.length}\n` +
+            `Book Records: ${backupData.book_issues.length}\n\n` +
+            `This will:\n` +
+            `- ADD missing students from backup\n` +
+            `- ADD missing book records from backup\n` +
+            `- KEEP existing data (no deletions)\n\n` +
+            `Continue with restore?`
+        );
+
+        if (!confirmed) {
+            showToast('Import cancelled', 'warning');
+            return;
+        }
+
+        showToast('Restoring data... Please wait', 'info');
+
+        let studentsAdded = 0;
+        let booksAdded = 0;
+        let errors = [];
+
+        // Restore students (using upsert to avoid duplicates)
+        if (backupData.students.length > 0) {
+            try {
+                const { data, error } = await supabase
+                    .from('students')
+                    .upsert(backupData.students, { onConflict: 'reg_no', ignoreDuplicates: true });
+
+                if (error) throw error;
+                studentsAdded = backupData.students.length;
+            } catch (error) {
+                errors.push('Students: ' + error.message);
+                console.error('Student restore error:', error);
+            }
+        }
+
+        // Restore book issues (using upsert with id)
+        if (backupData.book_issues.length > 0) {
+            try {
+                // Batch import in chunks of 100 to avoid timeouts
+                const chunkSize = 100;
+                for (let i = 0; i < backupData.book_issues.length; i += chunkSize) {
+                    const chunk = backupData.book_issues.slice(i, i + chunkSize);
+                    const { data, error } = await supabase
+                        .from('book_issues')
+                        .upsert(chunk, { onConflict: 'id', ignoreDuplicates: true });
+
+                    if (error) throw error;
+                    booksAdded += chunk.length;
+
+                    // Show progress for large imports
+                    if (backupData.book_issues.length > chunkSize) {
+                        const progress = Math.min(100, Math.round((i + chunk.length) / backupData.book_issues.length * 100));
+                        showToast(`Restoring... ${progress}%`, 'info');
+                    }
+                }
+            } catch (error) {
+                errors.push('Book Issues: ' + error.message);
+                console.error('Book issues restore error:', error);
+            }
+        }
+
+        // Reload dashboard to show updated data
+        await loadDashboard();
+
+        // Show results
+        if (errors.length > 0) {
+            showToast(
+                `⚠️ Restore completed with errors:\n\n${errors.join('\n')}\n\nStudents: ${studentsAdded} | Books: ${booksAdded}`,
+                'warning'
+            );
+        } else {
+            showToast(
+                `✅ Data restored successfully!\n\nStudents restored: ${studentsAdded}\nBook records restored: ${booksAdded}`,
+                'success'
+            );
+        }
+
+        console.log('Import completed:', { studentsAdded, booksAdded, errors });
+    } catch (error) {
+        console.error('Import error:', error);
+        showToast('Failed to import data: ' + error.message, 'error');
     }
 }
 
@@ -279,7 +539,7 @@ async function loadDashboard() {
         // Store globally
         allBooksData = allBooks || [];
 
-        // Calculate metrics - Fix: Total Issued - Total Returned = Total Pending
+        // Calculate book metrics
         const totalIssued = allBooks ? allBooks.length : 0;
         const returnedBooks = allBooks ? allBooks.filter(book => book.status === 'returned') : [];
         const issuedBooks = allBooks ? allBooks.filter(book => book.status === 'issued') : [];
@@ -290,16 +550,244 @@ async function loadDashboard() {
         document.getElementById('totalReturnedBooks').textContent = totalReturned;
         document.getElementById('totalPendingBooks').textContent = totalPending;
 
-        // Clear search results
+        // Load students count
+        await loadStudentsCount();
+
+        // Clear search input and load dashboard students list
         document.getElementById('searchInput').value = '';
-        document.getElementById('resultsContainer').innerHTML = `
+        await loadDashboardStudentsList();
+    } catch (error) {
+        console.error('Load dashboard error:', error);
+        showToast('Error loading dashboard data', 'error');
+    }
+}
+
+// Load Students Count - Only 'In' status students
+async function loadStudentsCount() {
+    try {
+        // Fetch all students with 'In' status (or null, which defaults to 'In')
+        const { data: students, error } = await supabase
+            .from('students')
+            .select('*')
+            .or('in_out.eq.In,in_out.is.null')
+            .order('course, name');
+
+        if (error) throw error;
+
+        // Store globally
+        studentsData = students || [];
+
+        // Count unique students by (reg_no, course) combination
+        // EE (Unaided) and other courses (Aided) have separate Reg No sequences that may overlap
+        const uniqueStudents = new Set();
+        students?.forEach(student => {
+            const uniqueKey = `${student.reg_no}_${student.course}`;
+            uniqueStudents.add(uniqueKey);
+        });
+
+        const totalStudents = uniqueStudents.size;
+        document.getElementById('totalStudents').textContent = totalStudents;
+
+        console.log('Total students counted:', totalStudents);
+    } catch (error) {
+        console.error('Load students count error:', error);
+        document.getElementById('totalStudents').textContent = '0';
+    }
+}
+
+// Show Students Course-wise Breakdown
+async function showStudentsBreakdown() {
+    if (!studentsData) {
+        showToast('Loading students data...', 'info');
+        await loadStudentsCount();
+    }
+
+    // Get all years and courses
+    const yearCourseMatrix = {};
+    const years = new Set();
+    const courses = new Set();
+
+    studentsData?.forEach(student => {
+        const year = student.year || 'Unknown';
+        const course = student.course || 'Unknown';
+        years.add(year);
+        courses.add(course);
+
+        if (!yearCourseMatrix[year]) {
+            yearCourseMatrix[year] = {};
+        }
+        if (!yearCourseMatrix[year][course]) {
+            yearCourseMatrix[year][course] = 0;
+        }
+        yearCourseMatrix[year][course]++;
+    });
+
+    // Fetch book statistics by year and course
+    const { data: bookIssues, error } = await supabase
+        .from('book_issues')
+        .select('*, students(year, course)');
+
+    if (error) {
+        console.error('Error fetching book issues:', error);
+    }
+
+    // Count books issued (all) and pending (status='issued') by year and course
+    const booksIssuedMatrix = {};
+    const booksPendingMatrix = {};
+
+    bookIssues?.forEach(book => {
+        const year = book.students?.year || 'Unknown';
+        const course = book.students?.course || 'Unknown';
+
+        // Books Issued (all records)
+        if (!booksIssuedMatrix[year]) {
+            booksIssuedMatrix[year] = {};
+        }
+        if (!booksIssuedMatrix[year][course]) {
+            booksIssuedMatrix[year][course] = 0;
+        }
+        booksIssuedMatrix[year][course]++;
+
+        // Books Pending (status='issued')
+        if (book.status === 'issued') {
+            if (!booksPendingMatrix[year]) {
+                booksPendingMatrix[year] = {};
+            }
+            if (!booksPendingMatrix[year][course]) {
+                booksPendingMatrix[year][course] = 0;
+            }
+            booksPendingMatrix[year][course]++;
+        }
+    });
+
+    const sortedYears = Array.from(years).sort();
+    const sortedCourses = Array.from(courses).sort();
+
+    // Calculate totals
+    const totalStudents = studentsData?.length || 0;
+
+    // Helper function to create a table
+    const createTable = (title, matrix, isStudentTable = false) => {
+        const rowTotals = {};
+        const colTotals = {};
+        let grandTotal = 0;
+
+        sortedYears.forEach(year => {
+            rowTotals[year] = 0;
+            sortedCourses.forEach(course => {
+                const count = matrix[year]?.[course] || 0;
+                rowTotals[year] += count;
+                colTotals[course] = (colTotals[course] || 0) + count;
+                grandTotal += count;
+            });
+        });
+
+        return `
+            <div class="breakdown-table-section">
+                <h4 style="margin: 1rem 0 0.5rem 0; color: #1e40af; font-size: 1rem;">${title}</h4>
+                <table class="breakdown-table">
+                    <thead>
+                        <tr>
+                            <th>Year</th>
+                            ${sortedCourses.map(course => `<th>${course}</th>`).join('')}
+                            <th style="background-color: #1e40af;">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${sortedYears.map(year => `
+                            <tr>
+                                <td><strong>${year}</strong></td>
+                                ${sortedCourses.map(course => {
+                                    const count = matrix[year]?.[course] || 0;
+                                    return `<td>${count || '-'}</td>`;
+                                }).join('')}
+                                <td style="background-color: #eff6ff; font-weight: 600;">${rowTotals[year]}</td>
+                            </tr>
+                        `).join('')}
+                        <tr style="background-color: #1e40af; color: white; font-weight: 600;">
+                            <td>Total</td>
+                            ${sortedCourses.map(course => `<td>${colTotals[course] || 0}</td>`).join('')}
+                            <td>${grandTotal}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        `;
+    };
+
+    const container = document.getElementById('studentsBreakdownContainer');
+
+    if (sortedYears.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state-small">
+                <p>No students data available</p>
+            </div>
+        `;
+    } else {
+        const breakdownHtml = `
+            <div style="text-align: center; padding: 0.75rem; margin-bottom: 1rem; background-color: #dbeafe; border-radius: 8px; border-left: 4px solid #2563eb;">
+                <div style="font-size: 1.5rem; font-weight: 700; color: #1e40af; margin-bottom: 0.25rem;">${totalStudents}</div>
+                <div style="font-size: 0.9rem; color: #1e40af; font-weight: 500;">Total Students (In Status)</div>
+            </div>
+
+            ${createTable('📊 Students Count', yearCourseMatrix, true)}
+            ${createTable('📚 Books Issued (Total)', booksIssuedMatrix)}
+            ${createTable('⏳ Books Pending (Not Returned)', booksPendingMatrix)}
+
+            <div style="text-align: center; padding: 0.5rem; margin-top: 1rem; background-color: #f1f5f9; border-radius: 6px; font-size: 0.8rem; color: #64748b;">
+                <strong>Note:</strong> EE (Unaided) and other courses (Aided) have separate Reg No sequences. Each student counted by (Reg No + Course).
+            </div>
+        `;
+
+        container.innerHTML = breakdownHtml;
+    }
+
+    showModal('studentsModal');
+}
+
+// Load Dashboard Students List (students with book activity)
+async function loadDashboardStudentsList() {
+    const resultsContainer = document.getElementById('resultsContainer');
+
+    try {
+        // Get all students who have book activity
+        const { data: studentsWithBooks, error } = await supabase
+            .from('book_issues')
+            .select('student_reg_no, students(reg_no, name, father, year, course)')
+            .order('updated_at', { ascending: false });
+
+        if (error) throw error;
+
+        // Get unique students (deduplicate by reg_no)
+        const uniqueStudentsMap = new Map();
+        studentsWithBooks?.forEach(record => {
+            const student = record.students;
+            if (student && !uniqueStudentsMap.has(student.reg_no)) {
+                uniqueStudentsMap.set(student.reg_no, student);
+            }
+        });
+
+        const students = Array.from(uniqueStudentsMap.values());
+
+        if (students.length === 0) {
+            resultsContainer.innerHTML = `
+                <div class="empty-state">
+                    <p>📚 No students with book activity yet</p>
+                    <p style="font-size: 0.9rem; margin-top: 0.5rem;">Search for students to issue books</p>
+                </div>
+            `;
+            return;
+        }
+
+        // Display students using the same displayResults function
+        await displayResults(students);
+    } catch (error) {
+        console.error('Load dashboard students error:', error);
+        resultsContainer.innerHTML = `
             <div class="empty-state">
                 <p>🔍 Enter a search term to find students</p>
             </div>
         `;
-    } catch (error) {
-        console.error('Load dashboard error:', error);
-        showToast('Error loading dashboard data', 'error');
     }
 }
 
@@ -958,6 +1446,7 @@ async function submitIssueBooks() {
         } else {
             books.push({
                 student_reg_no: selectedStudent.reg_no,
+                student_course: selectedStudent.course,
                 book_name: bookName,
                 author: author,
                 book_no: bookNo,
@@ -1114,12 +1603,12 @@ async function submitReturnBooks() {
     }
 }
 
-// Refresh Search Results (to update counts after issue/return)
+// Refresh Search Results or Dashboard List (to update counts after issue/return)
 async function refreshSearchResults() {
     const searchInput = document.getElementById('searchInput');
     const searchTerm = searchInput.value.trim();
 
-    // Only refresh if there's a search term and results are displayed
+    // If there's a search term, refresh search results
     if (searchTerm) {
         try {
             const { data, error } = await supabase
@@ -1136,6 +1625,9 @@ async function refreshSearchResults() {
         } catch (error) {
             console.error('Refresh search error:', error);
         }
+    } else {
+        // No search term, refresh dashboard students list
+        await loadDashboardStudentsList();
     }
 }
 

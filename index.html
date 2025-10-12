@@ -15,23 +15,82 @@
                     <p class="subtitle">Library Book Issue Register | Admin: Ananda M C</p>
                 </div>
                 <div class="header-actions">
-                    <button id="clearDataBtn" class="btn-clear-icon" title="Clear All Book Data">
-                        🗑️
-                    </button>
                     <button id="refreshDashboardBtn" class="btn-refresh-icon" title="Refresh Dashboard">
                         🔄
                     </button>
-                    <button id="logoutBtn" class="btn-logout-icon" title="Logout">
-                        🔓
+                    <button id="hamburgerMenuBtn" class="btn-hamburger" title="Menu">
+                        <span class="hamburger-icon">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </span>
                     </button>
                 </div>
             </div>
         </header>
 
+        <!-- Hamburger Menu Dropdown -->
+        <div id="hamburgerMenu" class="hamburger-menu">
+            <div class="menu-header">
+                <h3>Menu</h3>
+                <button id="closeMenuBtn" class="close-menu-btn">&times;</button>
+            </div>
+            <div class="menu-items">
+                <button id="exportDataBtn" class="menu-item">
+                    <span class="menu-icon">💾</span>
+                    <span class="menu-text">
+                        <span class="menu-title">Export Backup</span>
+                        <span class="menu-subtitle">Download all data</span>
+                    </span>
+                </button>
+                <button id="importDataBtn" class="menu-item">
+                    <span class="menu-icon">📥</span>
+                    <span class="menu-text">
+                        <span class="menu-title">Import Backup</span>
+                        <span class="menu-subtitle">Restore from file</span>
+                    </span>
+                </button>
+                <div class="menu-divider"></div>
+                <button id="clearDataBtn" class="menu-item menu-item-danger">
+                    <span class="menu-icon">🗑️</span>
+                    <span class="menu-text">
+                        <span class="menu-title">Clear All Data</span>
+                        <span class="menu-subtitle">Delete all book records</span>
+                    </span>
+                </button>
+                <button id="aboutBtn" class="menu-item">
+                    <span class="menu-icon">ℹ️</span>
+                    <span class="menu-text">
+                        <span class="menu-title">About</span>
+                        <span class="menu-subtitle">App info & credits</span>
+                    </span>
+                </button>
+                <div class="menu-divider"></div>
+                <button id="logoutBtn" class="menu-item">
+                    <span class="menu-icon">🔓</span>
+                    <span class="menu-text">
+                        <span class="menu-title">Logout</span>
+                        <span class="menu-subtitle">Sign out of system</span>
+                    </span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Menu Overlay -->
+        <div id="menuOverlay" class="menu-overlay"></div>
+
         <main>
             <!-- Dashboard Metrics Section -->
             <section class="dashboard-section">
                 <div class="metrics-grid">
+                    <div class="metric-card metric-students clickable" id="studentsCard">
+                        <div class="metric-icon">👥</div>
+                        <div class="metric-content">
+                            <div class="metric-value" id="totalStudents">0</div>
+                            <div class="metric-label">Total Students</div>
+                            <div class="metric-hint">Click to view course-wise</div>
+                        </div>
+                    </div>
                     <div class="metric-card metric-issued clickable" id="issuedCard">
                         <div class="metric-icon">📚</div>
                         <div class="metric-content">
@@ -188,7 +247,7 @@
         <div id="loginModal" class="modal modal-login">
             <div class="modal-content modal-login-content">
                 <div class="login-header">
-                    <h2>🔐 Library Management System</h2>
+                    <h2>🔐 SMP Library</h2>
                     <p class="login-subtitle">Please login to continue</p>
                 </div>
                 <div class="modal-body">
@@ -234,8 +293,73 @@
             </div>
         </div>
 
+        <!-- About Modal -->
+        <div id="aboutModal" class="modal">
+            <div class="modal-content modal-about">
+                <div class="modal-header">
+                    <h2>ℹ️ About</h2>
+                    <span class="close-btn" data-modal="aboutModal">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="about-section">
+                        <div class="about-header">
+                            <h3>SMP Library Management System</h3>
+                            <p class="version-badge">Version 1.0</p>
+                        </div>
+
+                        <div class="about-info">
+                            <div class="about-card">
+                                <h4>Contributors</h4>
+                                <ul class="contributors-list">
+                                    <li>Thejaraj R</li>
+                                    <li>Girish K P</li>
+                                    <li>Ananda M C</li>
+                                </ul>
+                            </div>
+
+                            <div class="about-card">
+                                <h4>Description</h4>
+                                <p class="about-description">
+                                    A comprehensive library management system for tracking book issues and returns for students.
+                                    Features include student search, book tracking, dashboard analytics, and data backup/restore capabilities.
+                                </p>
+                            </div>
+
+                            <div class="about-footer">
+                                <p>&copy; 2025 SMP Library. All rights reserved.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="closeAboutBtn" class="btn btn-cancel">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Students Course-wise Modal -->
+        <div id="studentsModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>👥 Students by Course</h2>
+                    <span class="close-btn" data-modal="studentsModal">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div id="studentsBreakdownContainer" class="students-breakdown-container">
+                        <!-- Course-wise breakdown will be loaded here -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="closeStudentsBtn" class="btn btn-cancel">Close</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Toast Notification -->
         <div id="toast" class="toast"></div>
+
+        <!-- Hidden file input for import -->
+        <input type="file" id="importFileInput" accept=".json" style="display: none;">
     </div>
 
     <script type="module" src="app.js"></script>
