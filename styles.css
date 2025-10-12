@@ -617,6 +617,11 @@ header h1 {
     color: #065f46;
 }
 
+.stat-pending {
+    background: #fed7aa;
+    color: #c2410c;
+}
+
 /* Student Actions */
 .student-actions {
     display: flex;

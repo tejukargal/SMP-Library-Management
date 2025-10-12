@@ -289,6 +289,14 @@ async function loadDashboard() {
         document.getElementById('totalIssuedBooks').textContent = totalIssued;
         document.getElementById('totalReturnedBooks').textContent = totalReturned;
         document.getElementById('totalPendingBooks').textContent = totalPending;
+
+        // Clear search results
+        document.getElementById('searchInput').value = '';
+        document.getElementById('resultsContainer').innerHTML = `
+            <div class="empty-state">
+                <p>🔍 Enter a search term to find students</p>
+            </div>
+        `;
     } catch (error) {
         console.error('Load dashboard error:', error);
         showToast('Error loading dashboard data', 'error');
@@ -364,6 +372,25 @@ function displayBooksList(students) {
         return;
     }
 
+    // Flatten the structure to show one row per book
+    const bookRows = [];
+    students.forEach(student => {
+        student.books.forEach(book => {
+            bookRows.push({
+                studentName: student.name,
+                regNo: student.reg_no,
+                year: student.year,
+                course: student.course,
+                bookName: book.book_name,
+                author: book.author,
+                bookNo: book.book_no,
+                issueDate: book.issue_date,
+                returnDate: book.return_date,
+                status: book.status
+            });
+        });
+    });
+
     const tableHtml = `
         <table class="students-table">
             <thead>
@@ -373,22 +400,26 @@ function displayBooksList(students) {
                     <th>Reg No</th>
                     <th>Year</th>
                     <th>Course</th>
-                    <th>Books</th>
-                    <th>Count</th>
+                    <th>Book Name</th>
+                    <th>Author</th>
+                    <th>Book No</th>
+                    <th>Issue Date</th>
+                    ${currentBooksListType === 'returned' || currentBooksListType === 'issued' ? '<th>Return Date</th>' : ''}
                 </tr>
             </thead>
             <tbody>
-                ${students.map((student, index) => `
+                ${bookRows.map((row, index) => `
                     <tr>
                         <td>${index + 1}</td>
-                        <td>${escapeHtml(student.name)}</td>
-                        <td>${escapeHtml(student.reg_no)}</td>
-                        <td>${escapeHtml(student.year)}</td>
-                        <td>${escapeHtml(student.course)}</td>
-                        <td class="books-cell">
-                            ${student.books.map(book => `<span class="book-tag">${escapeHtml(book.book_name)}</span>`).join(' ')}
-                        </td>
-                        <td><span class="count-badge">${student.books.length}</span></td>
+                        <td>${escapeHtml(row.studentName)}</td>
+                        <td>${escapeHtml(row.regNo)}</td>
+                        <td>${escapeHtml(row.year)}</td>
+                        <td>${escapeHtml(row.course)}</td>
+                        <td>${escapeHtml(row.bookName)}</td>
+                        <td>${escapeHtml(row.author)}</td>
+                        <td>${escapeHtml(row.bookNo)}</td>
+                        <td>${formatDate(row.issueDate)}</td>
+                        ${currentBooksListType === 'returned' || currentBooksListType === 'issued' ? `<td>${row.returnDate ? formatDate(row.returnDate) : '-'}</td>` : ''}
                     </tr>
                 `).join('')}
             </tbody>
@@ -482,6 +513,25 @@ function exportBooksListToPDF() {
         return;
     }
 
+    // Flatten the structure to show one row per book
+    const bookRows = [];
+    filtered.forEach(student => {
+        student.books.forEach(book => {
+            bookRows.push({
+                studentName: student.name,
+                regNo: student.reg_no,
+                year: student.year,
+                course: student.course,
+                bookName: book.book_name,
+                author: book.author,
+                bookNo: book.book_no,
+                issueDate: book.issue_date,
+                returnDate: book.return_date,
+                status: book.status
+            });
+        });
+    });
+
     const titles = {
         'issued': 'Total Issued Books Report',
         'returned': 'Total Returned Books Report',
@@ -520,44 +570,29 @@ function exportBooksListToPDF() {
                     width: 100%;
                     border-collapse: collapse;
                     margin-top: 10px;
-                    table-layout: fixed;
                 }
                 th, td {
                     border: 1px solid #ddd;
-                    padding: 8px;
+                    padding: 5px 4px;
                     text-align: left;
-                    white-space: nowrap;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                }
-                th { background-color: #2563eb; color: white; font-size: 0.9em; }
-                tr:nth-child(even) { background-color: #f8fafc; }
-                td:nth-child(1) { width: 5%; }
-                td:nth-child(2) { width: 20%; white-space: normal; }
-                td:nth-child(3) { width: 12%; }
-                td:nth-child(4) { width: 8%; }
-                td:nth-child(5) { width: 12%; }
-                td:nth-child(6) { width: 35%; white-space: normal; word-wrap: break-word; }
-                td:nth-child(7) { width: 8%; text-align: center; }
-                .book-tag {
-                    display: inline-block;
-                    background: #e0e7ff;
-                    padding: 2px 6px;
-                    margin: 2px;
-                    border-radius: 3px;
                     font-size: 0.8em;
-                    white-space: nowrap;
                 }
-                .count-badge {
-                    background: #ea580c;
-                    color: white;
-                    padding: 4px 10px;
-                    border-radius: 4px;
-                    font-weight: bold;
-                }
+                th { background-color: #2563eb; color: white; font-weight: 600; }
+                tr:nth-child(even) { background-color: #f8fafc; }
+                td:nth-child(1) { width: 3%; text-align: center; }
+                td:nth-child(2) { width: 16%; white-space: normal; word-wrap: break-word; }
+                td:nth-child(3) { width: 10%; white-space: nowrap; }
+                td:nth-child(4) { width: 5%; text-align: center; }
+                td:nth-child(5) { width: 8%; }
+                td:nth-child(6) { width: 18%; white-space: normal; word-wrap: break-word; }
+                td:nth-child(7) { width: 13%; white-space: normal; word-wrap: break-word; }
+                td:nth-child(8) { width: 8%; text-align: center; }
+                td:nth-child(9) { width: 9%; white-space: nowrap; }
+                ${currentBooksListType === 'returned' || currentBooksListType === 'issued' ? 'td:nth-child(10) { width: 9%; white-space: nowrap; }' : ''}
                 @media print {
                     body { padding: 10px; }
-                    th, td { padding: 6px; font-size: 0.85em; }
+                    th, td { padding: 3px; font-size: 0.7em; }
+                    @page { size: landscape; }
                 }
             </style>
         </head>
@@ -569,7 +604,7 @@ function exportBooksListToPDF() {
                 ${yearFilter && courseFilter ? '<span>|</span>' : ''}
                 ${courseFilter ? `<span class="info-item">Course: ${courseFilter}</span>` : ''}
                 ${(yearFilter || courseFilter) ? '<span>|</span>' : ''}
-                <span class="info-item">Total Students: ${filtered.length}</span>
+                <span class="info-item">Total Books: ${bookRows.length}</span>
             </div>
             <table>
                 <thead>
@@ -579,22 +614,26 @@ function exportBooksListToPDF() {
                         <th>Reg No</th>
                         <th>Year</th>
                         <th>Course</th>
-                        <th>Books</th>
-                        <th>Count</th>
+                        <th>Book Name</th>
+                        <th>Author</th>
+                        <th>Book No</th>
+                        <th>Issue Date</th>
+                        ${currentBooksListType === 'returned' || currentBooksListType === 'issued' ? '<th>Return Date</th>' : ''}
                     </tr>
                 </thead>
                 <tbody>
-                    ${filtered.map((student, index) => `
+                    ${bookRows.map((row, index) => `
                         <tr>
                             <td>${index + 1}</td>
-                            <td>${escapeHtml(student.name)}</td>
-                            <td>${escapeHtml(student.reg_no)}</td>
-                            <td>${escapeHtml(student.year)}</td>
-                            <td>${escapeHtml(student.course)}</td>
-                            <td>
-                                ${student.books.map(book => `<span class="book-tag">${escapeHtml(book.book_name)}</span>`).join(' ')}
-                            </td>
-                            <td><span class="count-badge">${student.books.length}</span></td>
+                            <td>${escapeHtml(row.studentName)}</td>
+                            <td>${escapeHtml(row.regNo)}</td>
+                            <td>${escapeHtml(row.year)}</td>
+                            <td>${escapeHtml(row.course)}</td>
+                            <td>${escapeHtml(row.bookName)}</td>
+                            <td>${escapeHtml(row.author)}</td>
+                            <td>${escapeHtml(row.bookNo)}</td>
+                            <td>${formatDate(row.issueDate)}</td>
+                            ${currentBooksListType === 'returned' || currentBooksListType === 'issued' ? `<td>${row.returnDate ? formatDate(row.returnDate) : '-'}</td>` : ''}
                         </tr>
                     `).join('')}
                 </tbody>
@@ -680,6 +719,7 @@ async function displayResults(students) {
                             <div class="book-stats">
                                 <span class="stat-badge stat-issued">📚 Issued: ${student.issued || 0}</span>
                                 <span class="stat-badge stat-returned">✅ Returned: ${student.returned || 0}</span>
+                                <span class="stat-badge stat-pending">⏳ Pending: ${student.pending || 0}</span>
                             </div>
                         </div>
                         <div class="student-actions">
@@ -705,13 +745,14 @@ async function getBookStatistics(regNo) {
 
         if (error) throw error;
 
-        const issued = data.filter(book => book.status === 'issued').length;
+        const totalIssued = data.length; // Total books ever issued (issued + returned)
         const returned = data.filter(book => book.status === 'returned').length;
+        const pending = data.filter(book => book.status === 'issued').length; // Currently pending books
 
-        return { issued, returned };
+        return { issued: totalIssued, returned, pending };
     } catch (error) {
         console.error('Error fetching book statistics:', error);
-        return { issued: 0, returned: 0 };
+        return { issued: 0, returned: 0, pending: 0 };
     }
 }
 
@@ -865,6 +906,18 @@ function addBookEntry() {
     `;
 
     container.appendChild(bookEntry);
+
+    // Add uppercase conversion for book name and author
+    const bookNameInput = bookEntry.querySelector('.book-name');
+    const authorInput = bookEntry.querySelector('.book-author');
+
+    bookNameInput.addEventListener('input', (e) => {
+        e.target.value = e.target.value.toUpperCase();
+    });
+
+    authorInput.addEventListener('input', (e) => {
+        e.target.value = e.target.value.toUpperCase();
+    });
 }
 
 // Remove Book Entry
@@ -936,6 +989,9 @@ async function submitIssueBooks() {
 
         // Refresh dashboard
         await loadDashboard();
+
+        // Refresh search results if there are any
+        await refreshSearchResults();
     } catch (error) {
         console.error('Issue books error:', error);
         showToast('Failed to issue books: ' + error.message, 'error');
@@ -1044,6 +1100,9 @@ async function submitReturnBooks() {
         // Refresh dashboard
         await loadDashboard();
 
+        // Refresh search results if there are any
+        await refreshSearchResults();
+
         // If no more books, close modal
         const remainingBooks = document.querySelectorAll('.book-return-checkbox');
         if (remainingBooks.length === 0) {
@@ -1052,6 +1111,31 @@ async function submitReturnBooks() {
     } catch (error) {
         console.error('Return books error:', error);
         showToast('Failed to return books: ' + error.message, 'error');
+    }
+}
+
+// Refresh Search Results (to update counts after issue/return)
+async function refreshSearchResults() {
+    const searchInput = document.getElementById('searchInput');
+    const searchTerm = searchInput.value.trim();
+
+    // Only refresh if there's a search term and results are displayed
+    if (searchTerm) {
+        try {
+            const { data, error } = await supabase
+                .from('students')
+                .select('*')
+                .or(`name.ilike.%${searchTerm}%,father.ilike.%${searchTerm}%,reg_no.ilike.%${searchTerm}%`)
+                .order('name')
+                .limit(10);
+
+            if (error) throw error;
+
+            // Re-display results with updated counts
+            await displayResults(data);
+        } catch (error) {
+            console.error('Refresh search error:', error);
+        }
     }
 }
 
