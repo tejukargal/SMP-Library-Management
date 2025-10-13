@@ -603,6 +603,24 @@ header h1 {
     border-color: var(--primary-color);
 }
 
+.btn-clear-filters {
+    background: var(--secondary-color);
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.btn-clear-filters:hover {
+    background: #475569;
+    transform: translateY(-1px);
+}
+
 .issued-students-list {
     max-height: 500px;
     overflow-y: auto;

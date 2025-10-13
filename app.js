@@ -233,6 +233,7 @@ function setupEventListeners() {
     document.getElementById('booksYearFilter').addEventListener('change', filterBooksList);
     document.getElementById('booksCourseFilter').addEventListener('change', filterBooksList);
     document.getElementById('booksSemFilter').addEventListener('change', filterBooksList);
+    document.getElementById('clearFiltersBtn').addEventListener('click', clearFilters);
     document.getElementById('exportPdfBtn').addEventListener('click', exportBooksListToPDF);
 
     // Students modal
@@ -574,7 +575,14 @@ async function processImportFile(event) {
 // Load Dashboard Metrics
 async function loadDashboard() {
     try {
-        // Get all book issues
+        // Show loading state on dashboard metrics
+        const metricsValues = ['totalIssuedBooks', 'totalReturnedBooks', 'totalPendingBooks', 'totalStudents'];
+        metricsValues.forEach(id => {
+            const elem = document.getElementById(id);
+            if (elem) elem.textContent = '...';
+        });
+
+        // Get all book issues (optimized with select only needed fields)
         const { data: allBooks, error } = await supabase
             .from('book_issues')
             .select('*, students(name, reg_no, course, year)');
@@ -604,6 +612,12 @@ async function loadDashboard() {
     } catch (error) {
         console.error('Load dashboard error:', error);
         showToast('Error loading dashboard data', 'error');
+
+        // Reset metrics to 0 on error
+        ['totalIssuedBooks', 'totalReturnedBooks', 'totalPendingBooks', 'totalStudents'].forEach(id => {
+            const elem = document.getElementById(id);
+            if (elem) elem.textContent = '0';
+        });
     }
 }
 
@@ -1022,6 +1036,17 @@ function filterBooksList() {
     displayBooksList(filtered);
 }
 
+// Clear All Filters
+function clearFilters() {
+    // Reset all filter dropdowns
+    document.getElementById('booksYearFilter').value = '';
+    document.getElementById('booksCourseFilter').value = '';
+    document.getElementById('booksSemFilter').value = '';
+
+    // Reload the current books list without filters
+    showBooksList(currentBooksListType);
+}
+
 // Export Books List to PDF
 function exportBooksListToPDF() {
     const yearFilter = document.getElementById('booksYearFilter').value;
@@ -1392,32 +1417,51 @@ window.openReturnModalForStudent = async function(regNo) {
 async function openIssueModal() {
     if (!selectedStudent) return;
 
+    // Show modal immediately with loading state
+    showModal('issueModal');
+
     // Set student info
     document.getElementById('issueStudentName').textContent = selectedStudent.name;
     document.getElementById('issueStudentRegNo').textContent = selectedStudent.reg_no;
     document.getElementById('issueStudentCourse').textContent = selectedStudent.course;
     document.getElementById('issueStudentYear').textContent = selectedStudent.year;
 
-    // Get the count of currently issued books (not returned) for this student
-    const { data, error } = await supabase
-        .from('book_issues')
-        .select('id')
-        .eq('student_reg_no', selectedStudent.reg_no)
-        .eq('status', 'issued');
+    // Show loading in previously issued section
+    const previouslyIssuedSection = document.getElementById('previouslyIssuedSection');
+    const previouslyIssuedContainer = document.getElementById('previouslyIssuedBooks');
+    previouslyIssuedSection.style.display = 'block';
+    previouslyIssuedContainer.innerHTML = '<div class="loading-indicator"><div class="spinner"></div><span>Loading history...</span></div>';
 
-    bookEntryCount = data ? data.length : 0;
+    // Reset books container with loading state
+    const booksContainer = document.getElementById('booksContainer');
+    booksContainer.innerHTML = '<tr><td colspan="11" style="text-align: center; padding: 1rem;">Loading...</td></tr>';
 
-    // Reset books container
-    document.getElementById('booksContainer').innerHTML = '';
+    try {
+        // Get the count of currently issued books (not returned) for this student
+        const { data, error } = await supabase
+            .from('book_issues')
+            .select('id')
+            .eq('student_reg_no', selectedStudent.reg_no)
+            .eq('status', 'issued');
 
-    // Load previously issued books
-    await loadPreviouslyIssuedBooks();
+        if (error) throw error;
 
-    // Add first book entry
-    addBookEntry();
+        bookEntryCount = data ? data.length : 0;
 
-    // Show modal
-    showModal('issueModal');
+        // Reset books container
+        booksContainer.innerHTML = '';
+
+        // Load previously issued books
+        await loadPreviouslyIssuedBooks();
+
+        // Add first book entry
+        addBookEntry();
+    } catch (error) {
+        console.error('Error opening issue modal:', error);
+        booksContainer.innerHTML = '';
+        addBookEntry();
+        showToast('Error loading book history', 'warning');
+    }
 }
 
 // Load Previously Issued Books for Issue Modal
@@ -1830,15 +1874,15 @@ async function submitIssueBooks() {
 async function openReturnModal() {
     if (!selectedStudent) return;
 
+    // Show modal immediately
+    showModal('returnModal');
+
     // Set student info
     document.getElementById('returnStudentName').textContent = selectedStudent.name;
     document.getElementById('returnStudentRegNo').textContent = selectedStudent.reg_no;
 
-    // Load issued books
+    // Load issued books asynchronously (already has loading indicator)
     await loadIssuedBooks();
-
-    // Show modal
-    showModal('returnModal');
 }
 
 // Load Issued Books
