@@ -163,21 +163,21 @@
                         <span><strong>Year:</strong> <span id="issueStudentYear"></span></span>
                     </div>
 
-                    <!-- Previously Issued Books Section -->
-                    <div id="previouslyIssuedSection" style="display: none;">
-                        <h4 style="margin-top: 1rem; margin-bottom: 0.5rem; color: #2563eb;">📚 Currently Issued Books:</h4>
-                        <div id="previouslyIssuedBooks" class="previously-issued-container">
-                            <!-- Previously issued books will be loaded here -->
-                        </div>
-                        <hr style="margin: 1rem 0; border: none; border-top: 1px solid #e5e7eb;">
-                    </div>
-
                     <h4 style="margin-bottom: 0.5rem; color: #059669;">➕ Issue New Books:</h4>
                     <div class="books-container" id="booksContainer">
                         <!-- Book entries will be added here -->
                     </div>
 
                     <button id="addBookBtn" class="btn btn-secondary">+ Add Another Book</button>
+
+                    <!-- Book History Section -->
+                    <div id="previouslyIssuedSection" style="display: none;">
+                        <hr style="margin: 1.5rem 0 1rem 0; border: none; border-top: 1px solid #e5e7eb;">
+                        <h4 style="margin-bottom: 0.5rem; color: #2563eb;">📖 Book Issue & Return History:</h4>
+                        <div id="previouslyIssuedBooks" class="previously-issued-container">
+                            <!-- Book history will be loaded here -->
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button id="cancelIssueBtn" class="btn btn-cancel">Cancel</button>

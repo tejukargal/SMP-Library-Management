@@ -1318,11 +1318,11 @@ async function loadPreviouslyIssuedBooks() {
     const container = document.getElementById('previouslyIssuedBooks');
 
     try {
+        // Fetch ALL books (issued + returned) for complete history
         const { data, error } = await supabase
             .from('book_issues')
             .select('*')
             .eq('student_reg_no', selectedStudent.reg_no)
-            .eq('status', 'issued')
             .order('issue_date', { ascending: false });
 
         if (error) throw error;
@@ -1334,15 +1334,26 @@ async function loadPreviouslyIssuedBooks() {
 
         section.style.display = 'block';
 
-        const booksHtml = data.map((book, index) => `
-            <div class="previously-issued-item">
-                <div class="book-info-inline">
-                    <span class="book-sl-badge">Sl ${index + 1}</span>
-                    <strong>${escapeHtml(book.book_name)}</strong> by ${escapeHtml(book.author)}
-                    <span class="book-meta">Book #${escapeHtml(book.book_no)} • Issued: ${formatDate(book.issue_date)}</span>
+        const booksHtml = data.map((book, index) => {
+            const statusBadge = book.status === 'issued'
+                ? '<span class="status-badge status-issued">⏳ Pending</span>'
+                : '<span class="status-badge status-returned">✅ Returned</span>';
+
+            const returnInfo = book.status === 'returned' && book.return_date
+                ? ` • Returned: ${formatDate(book.return_date)}`
+                : '';
+
+            return `
+                <div class="previously-issued-item ${book.status}">
+                    <div class="book-info-inline">
+                        ${statusBadge}
+                        <strong>${escapeHtml(book.book_name)}</strong>
+                        <span class="book-author-meta">by ${escapeHtml(book.author)}</span>
+                        <span class="book-meta">Book #${escapeHtml(book.book_no)} • Issued: ${formatDate(book.issue_date)}${returnInfo}</span>
+                    </div>
                 </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
 
         container.innerHTML = booksHtml;
     } catch (error) {
