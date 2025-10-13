@@ -232,6 +232,7 @@ function setupEventListeners() {
     document.getElementById('closeBooksListBtn').addEventListener('click', () => closeModal('booksListModal'));
     document.getElementById('booksYearFilter').addEventListener('change', filterBooksList);
     document.getElementById('booksCourseFilter').addEventListener('change', filterBooksList);
+    document.getElementById('booksSemFilter').addEventListener('change', filterBooksList);
     document.getElementById('exportPdfBtn').addEventListener('click', exportBooksListToPDF);
 
     // Students modal
@@ -459,47 +460,91 @@ async function processImportFile(event) {
         showToast('Restoring data... Please wait', 'info');
 
         let studentsAdded = 0;
+        let studentsUpdated = 0;
         let booksAdded = 0;
         let errors = [];
 
         // Restore students (using upsert to avoid duplicates)
         if (backupData.students.length > 0) {
             try {
-                const { data, error } = await supabase
-                    .from('students')
-                    .upsert(backupData.students, { onConflict: 'reg_no', ignoreDuplicates: true });
+                console.log('Restoring students...', backupData.students.length);
 
-                if (error) throw error;
-                studentsAdded = backupData.students.length;
+                // Students table has composite primary key (reg_no, course)
+                // Process in smaller batches to avoid issues
+                const batchSize = 50;
+                for (let i = 0; i < backupData.students.length; i += batchSize) {
+                    const batch = backupData.students.slice(i, i + batchSize);
+
+                    const { data, error } = await supabase
+                        .from('students')
+                        .upsert(batch, {
+                            onConflict: 'reg_no,course',
+                            ignoreDuplicates: false
+                        });
+
+                    if (error) {
+                        console.error('Student batch error:', error, batch);
+                        throw error;
+                    }
+
+                    studentsAdded += batch.length;
+                    console.log(`Students batch ${i / batchSize + 1} completed`);
+                }
+
+                console.log('Students restore completed:', studentsAdded);
             } catch (error) {
-                errors.push('Students: ' + error.message);
-                console.error('Student restore error:', error);
+                console.error('Student restore error details:', {
+                    message: error.message,
+                    details: error.details,
+                    hint: error.hint,
+                    code: error.code
+                });
+                errors.push('Students: ' + error.message + (error.hint ? ' (' + error.hint + ')' : ''));
             }
         }
 
         // Restore book issues (using upsert with id)
         if (backupData.book_issues.length > 0) {
             try {
-                // Batch import in chunks of 100 to avoid timeouts
-                const chunkSize = 100;
+                console.log('Restoring book issues...', backupData.book_issues.length);
+
+                // Batch import in chunks of 50 to avoid timeouts
+                const chunkSize = 50;
                 for (let i = 0; i < backupData.book_issues.length; i += chunkSize) {
                     const chunk = backupData.book_issues.slice(i, i + chunkSize);
+
                     const { data, error } = await supabase
                         .from('book_issues')
-                        .upsert(chunk, { onConflict: 'id', ignoreDuplicates: true });
+                        .upsert(chunk, {
+                            onConflict: 'id',
+                            ignoreDuplicates: false
+                        });
 
-                    if (error) throw error;
+                    if (error) {
+                        console.error('Book issues batch error:', error, chunk);
+                        throw error;
+                    }
+
                     booksAdded += chunk.length;
 
                     // Show progress for large imports
                     if (backupData.book_issues.length > chunkSize) {
                         const progress = Math.min(100, Math.round((i + chunk.length) / backupData.book_issues.length * 100));
-                        showToast(`Restoring... ${progress}%`, 'info');
+                        showToast(`Restoring books... ${progress}%`, 'info');
                     }
+
+                    console.log(`Book issues batch ${i / chunkSize + 1} completed`);
                 }
+
+                console.log('Book issues restore completed:', booksAdded);
             } catch (error) {
-                errors.push('Book Issues: ' + error.message);
-                console.error('Book issues restore error:', error);
+                console.error('Book issues restore error details:', {
+                    message: error.message,
+                    details: error.details,
+                    hint: error.hint,
+                    code: error.code
+                });
+                errors.push('Book Issues: ' + error.message + (error.hint ? ' (' + error.hint + ')' : ''));
             }
         }
 
@@ -832,13 +877,19 @@ async function showBooksList(type) {
     const years = [...new Set(studentsArray.map(s => s.year))].sort();
     const courses = [...new Set(studentsArray.map(s => s.course))].sort();
 
+    // Get all unique semesters from books
+    const semesters = [...new Set(books.map(b => b.sem).filter(s => s))].sort();
+
     const yearFilter = document.getElementById('booksYearFilter');
     const courseFilter = document.getElementById('booksCourseFilter');
+    const semFilter = document.getElementById('booksSemFilter');
 
     yearFilter.innerHTML = '<option value="">All Years</option>' +
         years.map(year => `<option value="${year}">${year}</option>`).join('');
     courseFilter.innerHTML = '<option value="">All Courses</option>' +
         courses.map(course => `<option value="${course}">${course}</option>`).join('');
+    semFilter.innerHTML = '<option value="">All Semesters</option>' +
+        semesters.map(sem => `<option value="${sem}">${sem}</option>`).join('');
 
     // Display the list
     displayBooksList(studentsArray);
@@ -872,6 +923,8 @@ function displayBooksList(students) {
                 bookName: book.book_name,
                 author: book.author,
                 bookNo: book.book_no,
+                sem: book.sem,
+                phoneNo: book.phone_no,
                 issueDate: book.issue_date,
                 returnDate: book.return_date,
                 status: book.status
@@ -888,9 +941,11 @@ function displayBooksList(students) {
                     <th>Reg No</th>
                     <th>Year</th>
                     <th>Course</th>
+                    <th>Sem</th>
                     <th>Book Name</th>
                     <th>Author</th>
                     <th>Book No</th>
+                    <th>Phone No</th>
                     <th>Issue Date</th>
                     ${currentBooksListType === 'returned' || currentBooksListType === 'issued' ? '<th>Return Date</th>' : ''}
                 </tr>
@@ -903,9 +958,11 @@ function displayBooksList(students) {
                         <td>${escapeHtml(row.regNo)}</td>
                         <td>${escapeHtml(row.year)}</td>
                         <td>${escapeHtml(row.course)}</td>
+                        <td>${row.sem || '-'}</td>
                         <td>${escapeHtml(row.bookName)}</td>
                         <td>${escapeHtml(row.author)}</td>
                         <td>${escapeHtml(row.bookNo)}</td>
+                        <td>${row.phoneNo || '-'}</td>
                         <td>${formatDate(row.issueDate)}</td>
                         ${currentBooksListType === 'returned' || currentBooksListType === 'issued' ? `<td>${row.returnDate ? formatDate(row.returnDate) : '-'}</td>` : ''}
                     </tr>
@@ -921,6 +978,7 @@ function displayBooksList(students) {
 function filterBooksList() {
     const yearFilter = document.getElementById('booksYearFilter').value;
     const courseFilter = document.getElementById('booksCourseFilter').value;
+    const semFilter = document.getElementById('booksSemFilter').value;
 
     // Get current type books
     let books;
@@ -930,6 +988,11 @@ function filterBooksList() {
         books = allBooksData.filter(book => book.status === 'returned');
     } else {
         books = allBooksData.filter(book => book.status === 'issued');
+    }
+
+    // Apply semester filter first (at book level)
+    if (semFilter) {
+        books = books.filter(book => book.sem === semFilter);
     }
 
     // Group by student
@@ -947,7 +1010,7 @@ function filterBooksList() {
 
     let filtered = Object.values(studentsWithBooks);
 
-    // Apply filters
+    // Apply year and course filters (at student level)
     if (yearFilter) {
         filtered = filtered.filter(s => s.year === yearFilter);
     }
@@ -963,6 +1026,7 @@ function filterBooksList() {
 function exportBooksListToPDF() {
     const yearFilter = document.getElementById('booksYearFilter').value;
     const courseFilter = document.getElementById('booksCourseFilter').value;
+    const semFilter = document.getElementById('booksSemFilter').value;
 
     // Get filtered data
     let books;
@@ -972,6 +1036,11 @@ function exportBooksListToPDF() {
         books = allBooksData.filter(book => book.status === 'returned');
     } else {
         books = allBooksData.filter(book => book.status === 'issued');
+    }
+
+    // Apply semester filter first
+    if (semFilter) {
+        books = books.filter(book => book.sem === semFilter);
     }
 
     const studentsWithBooks = {};
@@ -1013,6 +1082,8 @@ function exportBooksListToPDF() {
                 bookName: book.book_name,
                 author: book.author,
                 bookNo: book.book_no,
+                sem: book.sem,
+                phoneNo: book.phone_no,
                 issueDate: book.issue_date,
                 returnDate: book.return_date,
                 status: book.status
@@ -1033,23 +1104,24 @@ function exportBooksListToPDF() {
         <head>
             <title>${titles[currentBooksListType]}</title>
             <style>
-                body { font-family: Arial, sans-serif; padding: 20px; }
-                h1 { text-align: center; color: #2563eb; margin-bottom: 10px; }
+                body { font-family: Arial, sans-serif; padding: 15px; }
+                h1 { text-align: center; color: #2563eb; margin-bottom: 8px; font-size: 1.3em; }
                 .metadata {
                     text-align: center;
                     margin-bottom: 5px;
                     color: #64748b;
-                    font-size: 0.95em;
+                    font-size: 0.8em;
                 }
                 .info {
                     display: flex;
                     justify-content: center;
                     align-items: center;
-                    gap: 20px;
-                    margin-bottom: 20px;
+                    gap: 15px;
+                    margin-bottom: 12px;
                     color: #2563eb;
                     font-weight: 600;
                     flex-wrap: wrap;
+                    font-size: 0.85em;
                 }
                 .info-item {
                     white-space: nowrap;
@@ -1057,30 +1129,60 @@ function exportBooksListToPDF() {
                 table {
                     width: 100%;
                     border-collapse: collapse;
-                    margin-top: 10px;
+                    margin-top: 8px;
+                    table-layout: fixed;
                 }
                 th, td {
                     border: 1px solid #ddd;
-                    padding: 5px 4px;
+                    padding: 3px 2px;
                     text-align: left;
-                    font-size: 0.8em;
+                    font-size: 0.65em;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
                 }
-                th { background-color: #2563eb; color: white; font-weight: 600; }
+                th {
+                    background-color: #2563eb;
+                    color: white;
+                    font-weight: 600;
+                    font-size: 0.6em;
+                    padding: 4px 2px;
+                }
                 tr:nth-child(even) { background-color: #f8fafc; }
-                td:nth-child(1) { width: 3%; text-align: center; }
-                td:nth-child(2) { width: 16%; white-space: normal; word-wrap: break-word; }
-                td:nth-child(3) { width: 10%; white-space: nowrap; }
-                td:nth-child(4) { width: 5%; text-align: center; }
-                td:nth-child(5) { width: 8%; }
-                td:nth-child(6) { width: 18%; white-space: normal; word-wrap: break-word; }
-                td:nth-child(7) { width: 13%; white-space: normal; word-wrap: break-word; }
-                td:nth-child(8) { width: 8%; text-align: center; }
-                td:nth-child(9) { width: 9%; white-space: nowrap; }
-                ${currentBooksListType === 'returned' || currentBooksListType === 'issued' ? 'td:nth-child(10) { width: 9%; white-space: nowrap; }' : ''}
+
+                /* S.No */
+                th:nth-child(1), td:nth-child(1) { width: 3%; text-align: center; }
+                /* Name */
+                th:nth-child(2), td:nth-child(2) { width: 12%; }
+                /* Reg No */
+                th:nth-child(3), td:nth-child(3) { width: 7%; }
+                /* Year */
+                th:nth-child(4), td:nth-child(4) { width: 5%; text-align: center; }
+                /* Course */
+                th:nth-child(5), td:nth-child(5) { width: 6%; }
+                /* Sem */
+                th:nth-child(6), td:nth-child(6) { width: 6%; text-align: center; }
+                /* Book Name */
+                th:nth-child(7), td:nth-child(7) { width: 18%; }
+                /* Author */
+                th:nth-child(8), td:nth-child(8) { width: 12%; }
+                /* Book No */
+                th:nth-child(9), td:nth-child(9) { width: 7%; text-align: center; }
+                /* Phone No */
+                th:nth-child(10), td:nth-child(10) { width: 8%; }
+                /* Issue Date */
+                th:nth-child(11), td:nth-child(11) { width: 7%; text-align: center; }
+                /* Return Date */
+                th:nth-child(12), td:nth-child(12) { width: 7%; text-align: center; }
+
                 @media print {
-                    body { padding: 10px; }
-                    th, td { padding: 3px; font-size: 0.7em; }
-                    @page { size: landscape; }
+                    body { padding: 8px; }
+                    h1 { font-size: 1.2em; margin-bottom: 6px; }
+                    .metadata { font-size: 0.75em; }
+                    .info { font-size: 0.8em; margin-bottom: 10px; }
+                    th, td { padding: 2px 1px; font-size: 0.6em; }
+                    th { font-size: 0.55em; }
+                    @page { size: landscape; margin: 0.5cm; }
                 }
             </style>
         </head>
@@ -1089,9 +1191,11 @@ function exportBooksListToPDF() {
             <div class="metadata">Generated on: ${new Date().toLocaleString()}</div>
             <div class="info">
                 ${yearFilter ? `<span class="info-item">Year: ${yearFilter}</span>` : ''}
-                ${yearFilter && courseFilter ? '<span>|</span>' : ''}
+                ${(yearFilter && (courseFilter || semFilter)) ? '<span>|</span>' : ''}
                 ${courseFilter ? `<span class="info-item">Course: ${courseFilter}</span>` : ''}
-                ${(yearFilter || courseFilter) ? '<span>|</span>' : ''}
+                ${(courseFilter && semFilter) ? '<span>|</span>' : ''}
+                ${semFilter ? `<span class="info-item">Semester: ${semFilter}</span>` : ''}
+                ${(yearFilter || courseFilter || semFilter) ? '<span>|</span>' : ''}
                 <span class="info-item">Total Books: ${bookRows.length}</span>
             </div>
             <table>
@@ -1102,9 +1206,11 @@ function exportBooksListToPDF() {
                         <th>Reg No</th>
                         <th>Year</th>
                         <th>Course</th>
+                        <th>Sem</th>
                         <th>Book Name</th>
                         <th>Author</th>
                         <th>Book No</th>
+                        <th>Phone No</th>
                         <th>Issue Date</th>
                         ${currentBooksListType === 'returned' || currentBooksListType === 'issued' ? '<th>Return Date</th>' : ''}
                     </tr>
@@ -1117,9 +1223,11 @@ function exportBooksListToPDF() {
                             <td>${escapeHtml(row.regNo)}</td>
                             <td>${escapeHtml(row.year)}</td>
                             <td>${escapeHtml(row.course)}</td>
+                            <td>${row.sem || '-'}</td>
                             <td>${escapeHtml(row.bookName)}</td>
                             <td>${escapeHtml(row.author)}</td>
                             <td>${escapeHtml(row.bookNo)}</td>
+                            <td>${row.phoneNo || '-'}</td>
                             <td>${formatDate(row.issueDate)}</td>
                             ${currentBooksListType === 'returned' || currentBooksListType === 'issued' ? `<td>${row.returnDate ? formatDate(row.returnDate) : '-'}</td>` : ''}
                         </tr>
@@ -1343,14 +1451,24 @@ async function loadPreviouslyIssuedBooks() {
                 ? ` • Returned: ${formatDate(book.return_date)}`
                 : '';
 
+            // Add Edit button only for issued books
+            const actionButtons = book.status === 'issued' ? `
+                <div class="book-action-buttons">
+                    <button class="btn-book-edit" onclick="editIssuedBook('${book.id}')" title="Edit">✏️ Edit</button>
+                </div>
+            ` : '';
+
             return `
-                <div class="previously-issued-item ${book.status}">
+                <div class="previously-issued-item ${book.status}" id="book-${book.id}">
                     <div class="book-info-inline">
                         ${statusBadge}
-                        <strong>${escapeHtml(book.book_name)}</strong>
-                        <span class="book-author-meta">by ${escapeHtml(book.author)}</span>
-                        <span class="book-meta">Book #${escapeHtml(book.book_no)} • Issued: ${formatDate(book.issue_date)}${returnInfo}</span>
+                        <strong class="book-display-name">${escapeHtml(book.book_name)}</strong>
+                        <span class="book-author-meta">by <span class="book-display-author">${escapeHtml(book.author)}</span></span>
+                        <span class="book-meta">Book #<span class="book-display-no">${escapeHtml(book.book_no)}</span> • Issued: <span class="book-display-date">${formatDate(book.issue_date)}</span>${returnInfo}</span>
+                        ${book.sem ? `<span class="book-meta">• Sem: ${escapeHtml(book.sem)}</span>` : ''}
+                        ${book.phone_no ? `<span class="book-meta">• Phone: ${escapeHtml(book.phone_no)}</span>` : ''}
                     </div>
+                    ${actionButtons}
                 </div>
             `;
         }).join('');
@@ -1362,53 +1480,238 @@ async function loadPreviouslyIssuedBooks() {
     }
 }
 
-// Add Book Entry
+// Edit Issued Book
+window.editIssuedBook = async function(bookId) {
+    try {
+        // Fetch the book details
+        const { data: book, error } = await supabase
+            .from('book_issues')
+            .select('*')
+            .eq('id', bookId)
+            .single();
+
+        if (error) throw error;
+
+        const bookElement = document.getElementById(`book-${bookId}`);
+        if (!bookElement) return;
+
+        // Get semester options based on student year
+        const semesterOptions = getSemesterOptions(selectedStudent.year);
+        const semesterOptionsHtml = semesterOptions
+            .map(sem => `<option value="${sem}" ${sem === book.sem ? 'selected' : ''}>${sem}</option>`)
+            .join('');
+
+        // Replace the display with editable inputs
+        bookElement.innerHTML = `
+            <div class="book-info-inline">
+                <span class="status-badge status-issued">⏳ Editing...</span>
+                <div class="edit-book-form">
+                    <input type="text" class="edit-book-name" value="${escapeHtml(book.book_name)}" placeholder="Book name" />
+                    <input type="text" class="edit-book-author" value="${escapeHtml(book.author)}" placeholder="Author" />
+                    <input type="text" class="edit-book-no" value="${escapeHtml(book.book_no)}" placeholder="Book no" />
+                    <select class="edit-book-sem">
+                        <option value="">Select Sem</option>
+                        ${semesterOptionsHtml}
+                    </select>
+                    <input type="text" class="edit-book-phone" value="${book.phone_no || ''}" placeholder="Phone no" />
+                    <input type="date" class="edit-book-date" value="${book.issue_date}" />
+                    <div class="edit-book-actions">
+                        <button class="btn-book-save" onclick="saveIssuedBook('${bookId}')">💾 Save</button>
+                        <button class="btn-book-cancel" onclick="cancelEditBook()">❌ Cancel</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Add uppercase conversion for book name and author
+        const nameInput = bookElement.querySelector('.edit-book-name');
+        const authorInput = bookElement.querySelector('.edit-book-author');
+
+        nameInput.addEventListener('input', (e) => {
+            e.target.value = e.target.value.toUpperCase();
+        });
+
+        authorInput.addEventListener('input', (e) => {
+            e.target.value = e.target.value.toUpperCase();
+        });
+
+    } catch (error) {
+        console.error('Edit book error:', error);
+        showToast('Failed to load book for editing', 'error');
+    }
+};
+
+// Cancel Edit Book
+window.cancelEditBook = async function() {
+    await loadPreviouslyIssuedBooks();
+};
+
+// Save Edited Book
+window.saveIssuedBook = async function(bookId) {
+    try {
+        const bookElement = document.getElementById(`book-${bookId}`);
+        if (!bookElement) return;
+
+        const bookName = bookElement.querySelector('.edit-book-name').value.trim();
+        const author = bookElement.querySelector('.edit-book-author').value.trim();
+        const bookNo = bookElement.querySelector('.edit-book-no').value.trim();
+        const sem = bookElement.querySelector('.edit-book-sem').value;
+        const phoneNo = bookElement.querySelector('.edit-book-phone').value.trim();
+        const issueDate = bookElement.querySelector('.edit-book-date').value;
+
+        if (!bookName || !author || !bookNo || !issueDate) {
+            showToast('Please fill in all required fields', 'error');
+            return;
+        }
+
+        const { error } = await supabase
+            .from('book_issues')
+            .update({
+                book_name: bookName,
+                author: author,
+                book_no: bookNo,
+                sem: sem || null,
+                phone_no: phoneNo || null,
+                issue_date: issueDate
+            })
+            .eq('id', bookId);
+
+        if (error) throw error;
+
+        // Save phone number to localStorage for future use
+        if (phoneNo && selectedStudent) {
+            savePhoneNumber(selectedStudent.reg_no, phoneNo);
+        }
+
+        showToast('Book updated successfully', 'success');
+        await loadPreviouslyIssuedBooks();
+
+        // Refresh dashboard to update counts
+        await loadDashboard();
+    } catch (error) {
+        console.error('Save book error:', error);
+        showToast('Failed to update book: ' + error.message, 'error');
+    }
+};
+
+// Remove Issued Book
+window.removeIssuedBook = async function(bookId) {
+    const confirmed = confirm('Are you sure you want to delete this book entry?\n\nThis action cannot be undone.');
+
+    if (!confirmed) return;
+
+    try {
+        const { error } = await supabase
+            .from('book_issues')
+            .delete()
+            .eq('id', bookId);
+
+        if (error) throw error;
+
+        showToast('Book entry deleted successfully', 'success');
+        await loadPreviouslyIssuedBooks();
+
+        // Refresh dashboard to update counts
+        await loadDashboard();
+
+        // Refresh search results if there are any
+        await refreshSearchResults();
+    } catch (error) {
+        console.error('Remove book error:', error);
+        showToast('Failed to delete book: ' + error.message, 'error');
+    }
+};
+
+// Get Semester Options Based on Year
+function getSemesterOptions(year) {
+    const yearNum = year?.toLowerCase();
+
+    if (yearNum?.includes('1st') || yearNum?.includes('i')) {
+        return ['1st Sem', '2nd Sem'];
+    } else if (yearNum?.includes('2nd') || yearNum?.includes('ii')) {
+        return ['3rd Sem', '4th Sem'];
+    } else if (yearNum?.includes('3rd') || yearNum?.includes('iii')) {
+        return ['5th Sem', '6th Sem'];
+    }
+
+    // Default: return all semesters
+    return ['1st Sem', '2nd Sem', '3rd Sem', '4th Sem', '5th Sem', '6th Sem'];
+}
+
+// Get Saved Phone Number for Student
+function getSavedPhoneNumber(regNo) {
+    try {
+        const savedPhones = JSON.parse(localStorage.getItem('studentPhoneNumbers') || '{}');
+        return savedPhones[regNo] || '';
+    } catch (error) {
+        console.error('Error retrieving saved phone number:', error);
+        return '';
+    }
+}
+
+// Save Phone Number for Student
+function savePhoneNumber(regNo, phoneNo) {
+    try {
+        const savedPhones = JSON.parse(localStorage.getItem('studentPhoneNumbers') || '{}');
+        if (phoneNo && phoneNo.trim()) {
+            savedPhones[regNo] = phoneNo.trim();
+            localStorage.setItem('studentPhoneNumbers', JSON.stringify(savedPhones));
+        }
+    } catch (error) {
+        console.error('Error saving phone number:', error);
+    }
+}
+
+// Add Book Entry (Table Row)
 function addBookEntry() {
     bookEntryCount++;
     const container = document.getElementById('booksContainer');
-    const currentEntries = container.querySelectorAll('.book-entry').length;
-
-    const bookEntry = document.createElement('div');
-    bookEntry.className = 'book-entry';
-    bookEntry.dataset.bookId = bookEntryCount;
+    const currentEntries = container.querySelectorAll('tr').length;
 
     // Serial number based on currently issued books
     const slNo = bookEntryCount;
 
-    bookEntry.innerHTML = `
-        <div class="book-entry-header">
-            <span class="book-entry-title">Sl No. ${slNo}</span>
-            ${currentEntries > 0 ? '<button class="remove-book-btn" onclick="removeBookEntry(this)">Remove</button>' : ''}
-        </div>
-        <div class="form-grid">
-            <div class="form-group">
-                <label>Sl No. *</label>
-                <input type="text" class="book-sl-no" value="${slNo}" required readonly>
-            </div>
-            <div class="form-group">
-                <label>Book Number *</label>
-                <input type="text" class="book-no" required placeholder="Enter book number">
-            </div>
-            <div class="form-group full-width">
-                <label>Book Name *</label>
-                <input type="text" class="book-name" required>
-            </div>
-            <div class="form-group">
-                <label>Author *</label>
-                <input type="text" class="book-author" required>
-            </div>
-            <div class="form-group">
-                <label>Date of Issue *</label>
-                <input type="date" class="book-date" value="${getCurrentDate()}" required>
-            </div>
-        </div>
+    // Get semester options based on student year
+    const semesterOptions = getSemesterOptions(selectedStudent.year);
+    const semesterOptionsHtml = semesterOptions
+        .map(sem => `<option value="${sem}">${sem}</option>`)
+        .join('');
+
+    // Get saved phone number for this student
+    const savedPhone = getSavedPhoneNumber(selectedStudent.reg_no);
+
+    const bookRow = document.createElement('tr');
+    bookRow.dataset.bookId = bookEntryCount;
+
+    bookRow.innerHTML = `
+        <td><input type="text" class="book-sl-no" value="${slNo}" readonly></td>
+        <td><input type="text" class="book-student-name" value="${selectedStudent.name}" readonly></td>
+        <td>
+            <select class="book-sem">
+                <option value="">Select</option>
+                ${semesterOptionsHtml}
+            </select>
+        </td>
+        <td><input type="text" class="book-year" value="${selectedStudent.year}" readonly></td>
+        <td><input type="text" class="book-course" value="${selectedStudent.course}" readonly></td>
+        <td><input type="text" class="book-name" required placeholder="Book name"></td>
+        <td><input type="text" class="book-author" required placeholder="Author"></td>
+        <td><input type="text" class="book-no" required placeholder="Book no"></td>
+        <td><input type="text" class="book-phone" value="${savedPhone}" placeholder="Phone no"></td>
+        <td><input type="date" class="book-date" value="${getCurrentDate()}" required></td>
+        <td>
+            <button type="button" class="book-row-remove-btn" onclick="removeBookEntry(this)" ${currentEntries === 0 ? 'disabled' : ''}>
+                Remove
+            </button>
+        </td>
     `;
 
-    container.appendChild(bookEntry);
+    container.appendChild(bookRow);
 
     // Add uppercase conversion for book name and author
-    const bookNameInput = bookEntry.querySelector('.book-name');
-    const authorInput = bookEntry.querySelector('.book-author');
+    const bookNameInput = bookRow.querySelector('.book-name');
+    const authorInput = bookRow.querySelector('.book-author');
+    const phoneInput = bookRow.querySelector('.book-phone');
 
     bookNameInput.addEventListener('input', (e) => {
         e.target.value = e.target.value.toUpperCase();
@@ -1417,11 +1720,27 @@ function addBookEntry() {
     authorInput.addEventListener('input', (e) => {
         e.target.value = e.target.value.toUpperCase();
     });
+
+    // Save phone number on blur
+    phoneInput.addEventListener('blur', (e) => {
+        const phoneNo = e.target.value.trim();
+        if (phoneNo) {
+            savePhoneNumber(selectedStudent.reg_no, phoneNo);
+        }
+    });
 }
 
 // Remove Book Entry
 window.removeBookEntry = function(btn) {
-    btn.closest('.book-entry').remove();
+    const row = btn.closest('tr');
+    row.remove();
+
+    // Enable/disable remove buttons based on row count
+    const container = document.getElementById('booksContainer');
+    const rows = container.querySelectorAll('tr');
+    if (rows.length === 1) {
+        rows[0].querySelector('.book-row-remove-btn').disabled = true;
+    }
 }
 
 // Get Current Date (YYYY-MM-DD)
@@ -1433,34 +1752,43 @@ function getCurrentDate() {
 async function submitIssueBooks() {
     if (!selectedStudent) return;
 
-    const bookEntries = document.querySelectorAll('.book-entry');
+    const bookRows = document.querySelectorAll('#booksContainer tr');
     const books = [];
     let hasErrors = false;
 
     // Validate and collect book data
-    bookEntries.forEach(entry => {
-        const bookName = entry.querySelector('.book-name').value.trim();
-        const author = entry.querySelector('.book-author').value.trim();
-        const bookNo = entry.querySelector('.book-no').value.trim();
-        const issueDate = entry.querySelector('.book-date').value;
+    bookRows.forEach(row => {
+        const bookName = row.querySelector('.book-name').value.trim();
+        const author = row.querySelector('.book-author').value.trim();
+        const bookNo = row.querySelector('.book-no').value.trim();
+        const issueDate = row.querySelector('.book-date').value;
+        const sem = row.querySelector('.book-sem').value;
+        const phoneNo = row.querySelector('.book-phone').value.trim();
 
         // Clear previous errors
-        entry.querySelectorAll('input').forEach(input => input.classList.remove('error'));
+        row.querySelectorAll('input').forEach(input => input.classList.remove('error'));
 
-        // Validate
+        // Validate required fields
         if (!bookName || !author || !bookNo || !issueDate) {
             hasErrors = true;
-            if (!bookName) entry.querySelector('.book-name').classList.add('error');
-            if (!author) entry.querySelector('.book-author').classList.add('error');
-            if (!bookNo) entry.querySelector('.book-no').classList.add('error');
-            if (!issueDate) entry.querySelector('.book-date').classList.add('error');
+            if (!bookName) row.querySelector('.book-name').classList.add('error');
+            if (!author) row.querySelector('.book-author').classList.add('error');
+            if (!bookNo) row.querySelector('.book-no').classList.add('error');
+            if (!issueDate) row.querySelector('.book-date').classList.add('error');
         } else {
+            // Save phone number to localStorage if provided
+            if (phoneNo) {
+                savePhoneNumber(selectedStudent.reg_no, phoneNo);
+            }
+
             books.push({
                 student_reg_no: selectedStudent.reg_no,
                 student_course: selectedStudent.course,
                 book_name: bookName,
                 author: author,
                 book_no: bookNo,
+                sem: sem || null,
+                phone_no: phoneNo || null,
                 issue_date: issueDate,
                 status: 'issued'
             });

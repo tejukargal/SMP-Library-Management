@@ -147,7 +147,7 @@
 
         <!-- Issue Books Modal -->
         <div id="issueModal" class="modal">
-            <div class="modal-content">
+            <div class="modal-content modal-issue-wide">
                 <div class="modal-header">
                     <h2>Issue Books</h2>
                     <span class="close-btn" data-modal="issueModal">&times;</span>
@@ -164,11 +164,30 @@
                     </div>
 
                     <h4 style="margin-bottom: 0.5rem; color: #059669;">➕ Issue New Books:</h4>
-                    <div class="books-container" id="booksContainer">
-                        <!-- Book entries will be added here -->
+                    <div class="books-table-container">
+                        <table class="books-issue-table">
+                            <thead>
+                                <tr>
+                                    <th>Sl No</th>
+                                    <th>Student Name</th>
+                                    <th>Sem</th>
+                                    <th>Year</th>
+                                    <th>Course</th>
+                                    <th>Book Name *</th>
+                                    <th>Author *</th>
+                                    <th>Book No *</th>
+                                    <th>Phone No</th>
+                                    <th>Date of Issue *</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="booksContainer">
+                                <!-- Book entries will be added here as table rows -->
+                            </tbody>
+                        </table>
                     </div>
 
-                    <button id="addBookBtn" class="btn btn-secondary">+ Add Another Book</button>
+                    <button id="addBookBtn" class="btn btn-secondary" style="margin-top: 1rem;">+ Add Another Book</button>
 
                     <!-- Book History Section -->
                     <div id="previouslyIssuedSection" style="display: none;">
@@ -226,6 +245,9 @@
                             </select>
                             <select id="booksCourseFilter" class="filter-select">
                                 <option value="">All Courses</option>
+                            </select>
+                            <select id="booksSemFilter" class="filter-select">
+                                <option value="">All Semesters</option>
                             </select>
                         </div>
                         <button id="exportPdfBtn" class="btn-action">📄 Export PDF</button>

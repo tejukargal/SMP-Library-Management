@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS book_issues (
     book_name TEXT NOT NULL,
     author TEXT NOT NULL,
     book_no TEXT NOT NULL,
+    sem TEXT,
+    phone_no TEXT,
     issue_date DATE NOT NULL,
     return_date DATE,
     status TEXT NOT NULL CHECK (status IN ('issued', 'returned')),
