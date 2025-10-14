@@ -4,6 +4,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 // Application State
 let supabase = null;
 let selectedStudent = null;
+let selectedStaff = null;
 let bookEntryCount = 0;
 
 // Authentication credentials
@@ -592,9 +593,10 @@ async function loadDashboard() {
         });
 
         // Get all book issues (optimized with select only needed fields)
+        // Join with both students and staff tables
         const { data: allBooks, error } = await supabase
             .from('book_issues')
-            .select('*, students(name, reg_no, course, year)');
+            .select('*, students(name, reg_no, course, year), staff(staff_id, name, dept, designation, type)');
 
         if (error) throw error;
 
@@ -847,8 +849,11 @@ async function loadDashboardStudentsList() {
             return;
         }
 
+        // Add borrower_type to students before displaying
+        const studentsWithType = students.map(s => ({ ...s, borrower_type: 'student' }));
+
         // Display students using the same displayResults function
-        await displayResults(students);
+        await displayResults(studentsWithType);
     } catch (error) {
         console.error('Load dashboard students error:', error);
         resultsContainer.innerHTML = `
@@ -881,24 +886,41 @@ async function showBooksList(type) {
         books = allBooksData.filter(book => book.status === 'issued'); // Pending
     }
 
-    // Group by student
-    const studentsWithBooks = {};
+    // Group by borrower (student or staff)
+    const borrowersWithBooks = {};
     books.forEach(book => {
-        const regNo = book.student_reg_no;
-        if (!studentsWithBooks[regNo]) {
-            studentsWithBooks[regNo] = {
-                ...book.students,
-                books: []
-            };
+        const isStudent = book.borrower_type === 'student';
+        const borrowerId = isStudent ? book.student_reg_no : book.staff_id;
+
+        if (!borrowersWithBooks[borrowerId]) {
+            if (isStudent) {
+                borrowersWithBooks[borrowerId] = {
+                    ...book.students,
+                    borrower_type: 'student',
+                    books: []
+                };
+            } else {
+                // For staff, we need to fetch staff details or include them in the join
+                borrowersWithBooks[borrowerId] = {
+                    staff_id: book.staff_id,
+                    name: book.staff?.name || 'Staff Member',
+                    dept: book.staff?.dept || 'N/A',
+                    designation: book.staff?.designation || 'N/A',
+                    borrower_type: 'staff',
+                    year: 'Staff', // Use "Staff" as year for filtering
+                    course: book.staff?.dept || 'N/A', // Use dept as course for filtering
+                    books: []
+                };
+            }
         }
-        studentsWithBooks[regNo].books.push(book);
+        borrowersWithBooks[borrowerId].books.push(book);
     });
 
-    const studentsArray = Object.values(studentsWithBooks);
+    const borrowersArray = Object.values(borrowersWithBooks);
 
     // Populate filter dropdowns
-    const years = [...new Set(studentsArray.map(s => s.year))].sort();
-    const courses = [...new Set(studentsArray.map(s => s.course))].sort();
+    const years = [...new Set(borrowersArray.map(b => b.borrower_type === 'student' ? b.year : 'Staff'))].sort();
+    const courses = [...new Set(borrowersArray.map(b => b.course))].sort();
 
     // Get all unique semesters from books
     const semesters = [...new Set(books.map(b => b.sem).filter(s => s))].sort();
@@ -915,7 +937,7 @@ async function showBooksList(type) {
         semesters.map(sem => `<option value="${sem}">${sem}</option>`).join('');
 
     // Display the list
-    displayBooksList(studentsArray);
+    displayBooksList(borrowersArray);
 
     // Show modal
     showModal('booksListModal');
@@ -936,13 +958,14 @@ function displayBooksList(students) {
 
     // Flatten the structure to show one row per book
     const bookRows = [];
-    students.forEach(student => {
-        student.books.forEach(book => {
+    students.forEach(borrower => {
+        const isStudent = borrower.borrower_type === 'student';
+        borrower.books.forEach(book => {
             bookRows.push({
-                studentName: student.name,
-                regNo: student.reg_no,
-                year: student.year,
-                course: student.course,
+                studentName: borrower.name,
+                regNo: isStudent ? borrower.reg_no : borrower.staff_id,
+                year: isStudent ? borrower.year : 'Staff',
+                course: borrower.course,
                 bookName: book.book_name,
                 author: book.author,
                 bookNo: book.book_no,
@@ -1018,28 +1041,50 @@ function filterBooksList() {
         books = books.filter(book => book.sem === semFilter);
     }
 
-    // Group by student
-    const studentsWithBooks = {};
+    // Group by borrower (student or staff)
+    const borrowersWithBooks = {};
     books.forEach(book => {
-        const regNo = book.student_reg_no;
-        if (!studentsWithBooks[regNo]) {
-            studentsWithBooks[regNo] = {
-                ...book.students,
-                books: []
-            };
+        const isStudent = book.borrower_type === 'student';
+        const borrowerId = isStudent ? book.student_reg_no : book.staff_id;
+
+        if (!borrowersWithBooks[borrowerId]) {
+            if (isStudent) {
+                borrowersWithBooks[borrowerId] = {
+                    ...book.students,
+                    borrower_type: 'student',
+                    books: []
+                };
+            } else {
+                borrowersWithBooks[borrowerId] = {
+                    staff_id: book.staff_id,
+                    name: book.staff?.name || 'Staff Member',
+                    dept: book.staff?.dept || 'N/A',
+                    designation: book.staff?.designation || 'N/A',
+                    borrower_type: 'staff',
+                    year: 'Staff',
+                    course: book.staff?.dept || 'N/A',
+                    books: []
+                };
+            }
         }
-        studentsWithBooks[regNo].books.push(book);
+        borrowersWithBooks[borrowerId].books.push(book);
     });
 
-    let filtered = Object.values(studentsWithBooks);
+    let filtered = Object.values(borrowersWithBooks);
 
-    // Apply year and course filters (at student level)
+    // Apply year and course filters (at borrower level)
     if (yearFilter) {
-        filtered = filtered.filter(s => s.year === yearFilter);
+        if (yearFilter === 'Staff') {
+            // Filter to only show staff
+            filtered = filtered.filter(b => b.borrower_type === 'staff');
+        } else {
+            // Filter to only show students with matching year
+            filtered = filtered.filter(b => b.borrower_type === 'student' && b.year === yearFilter);
+        }
     }
 
     if (courseFilter) {
-        filtered = filtered.filter(s => s.course === courseFilter);
+        filtered = filtered.filter(b => b.course === courseFilter);
     }
 
     displayBooksList(filtered);
@@ -1278,7 +1323,7 @@ function exportBooksListToPDF() {
     printWindow.print();
 }
 
-// Search Students
+// Search Students and Staff
 async function performSearch() {
     const searchInput = document.getElementById('searchInput');
     const searchTerm = searchInput.value.trim();
@@ -1291,19 +1336,35 @@ async function performSearch() {
     showLoading(true);
 
     try {
-        const { data, error } = await supabase
+        // Search students
+        const { data: students, error: studentsError } = await supabase
             .from('students')
             .select('*')
             .or(`name.ilike.%${searchTerm}%,father.ilike.%${searchTerm}%,reg_no.ilike.%${searchTerm}%`)
             .order('name')
             .limit(10);
 
-        if (error) throw error;
+        if (studentsError) throw studentsError;
 
-        displayResults(data);
+        // Search staff
+        const { data: staff, error: staffError } = await supabase
+            .from('staff')
+            .select('*')
+            .or(`name.ilike.%${searchTerm}%,dept.ilike.%${searchTerm}%,designation.ilike.%${searchTerm}%,staff_id.ilike.%${searchTerm}%`)
+            .order('name')
+            .limit(10);
 
-        if (data.length === 0) {
-            showToast('No students found', 'warning');
+        if (staffError) throw staffError;
+
+        // Combine results with borrower_type identifier
+        const studentsWithType = (students || []).map(s => ({ ...s, borrower_type: 'student' }));
+        const staffWithType = (staff || []).map(s => ({ ...s, borrower_type: 'staff' }));
+        const combinedResults = [...studentsWithType, ...staffWithType];
+
+        displayResults(combinedResults);
+
+        if (combinedResults.length === 0) {
+            showToast('No students or staff found', 'warning');
         }
     } catch (error) {
         console.error('Search error:', error);
@@ -1314,64 +1375,93 @@ async function performSearch() {
     }
 }
 
-// Display Search Results
-async function displayResults(students) {
+// Display Search Results (Students and Staff)
+async function displayResults(results) {
     const resultsContainer = document.getElementById('resultsContainer');
 
-    if (students.length === 0) {
+    if (results.length === 0) {
         resultsContainer.innerHTML = `
             <div class="empty-state">
-                <p>No students found. Try a different search term.</p>
+                <p>No results found. Try a different search term.</p>
             </div>
         `;
         return;
     }
 
-    // Fetch book statistics for all students
-    const studentsWithStats = await Promise.all(students.map(async (student) => {
-        const stats = await getBookStatistics(student.reg_no);
-        return { ...student, ...stats };
+    // Fetch book statistics for all results
+    const resultsWithStats = await Promise.all(results.map(async (result) => {
+        const stats = await getBookStatistics(result);
+        return { ...result, ...stats };
     }));
 
     const listHtml = `
         <div class="student-list">
-            ${studentsWithStats.map(student => `
-                <div class="student-item">
-                    <div class="student-item-content">
-                        <div class="student-info-section">
-                            <div class="student-name">${escapeHtml(student.name)}</div>
-                            <div class="student-details">
-                                <span><strong>Reg No:</strong> ${escapeHtml(student.reg_no)}</span>
-                                <span><strong>Father:</strong> ${escapeHtml(student.father)}</span>
-                                <span><strong>Year:</strong> ${escapeHtml(student.year)}</span>
-                                <span><strong>Course:</strong> ${escapeHtml(student.course)}</span>
+            ${resultsWithStats.map(result => {
+                const isStudent = result.borrower_type === 'student';
+
+                // Different details based on borrower type
+                const detailsHtml = isStudent ? `
+                    <span><strong>Reg No:</strong> ${escapeHtml(result.reg_no)}</span>
+                    <span><strong>Father:</strong> ${escapeHtml(result.father)}</span>
+                    <span><strong>Year:</strong> ${escapeHtml(result.year)}</span>
+                    <span><strong>Course:</strong> ${escapeHtml(result.course)}</span>
+                ` : `
+                    <span><strong>Staff ID:</strong> ${escapeHtml(result.staff_id)}</span>
+                    <span><strong>Department:</strong> ${escapeHtml(result.dept)}</span>
+                    <span><strong>Designation:</strong> ${escapeHtml(result.designation)}</span>
+                    <span><strong>Type:</strong> ${escapeHtml(result.type)}</span>
+                `;
+
+                // Different badge and onclick handlers based on borrower type
+                const badge = isStudent ? '' : '<span class="stat-badge staff-badge">👔 Staff</span>';
+                const issueClick = isStudent
+                    ? `openIssueModalForStudent('${escapeHtml(result.reg_no)}', '${escapeHtml(result.course)}')`
+                    : `openIssueModalForStaff('${escapeHtml(result.staff_id)}')`;
+                const returnClick = isStudent
+                    ? `openReturnModalForStudent('${escapeHtml(result.reg_no)}', '${escapeHtml(result.course)}')`
+                    : `openReturnModalForStaff('${escapeHtml(result.staff_id)}')`;
+
+                return `
+                    <div class="student-item">
+                        <div class="student-item-content">
+                            <div class="student-info-section">
+                                <div class="student-name">${escapeHtml(result.name)} ${badge}</div>
+                                <div class="student-details">
+                                    ${detailsHtml}
+                                </div>
+                                <div class="book-stats">
+                                    <span class="stat-badge stat-issued">📚 Issued: ${result.issued || 0}</span>
+                                    <span class="stat-badge stat-returned">✅ Returned: ${result.returned || 0}</span>
+                                    <span class="stat-badge stat-pending">⏳ Pending: ${result.pending || 0}</span>
+                                </div>
                             </div>
-                            <div class="book-stats">
-                                <span class="stat-badge stat-issued">📚 Issued: ${student.issued || 0}</span>
-                                <span class="stat-badge stat-returned">✅ Returned: ${student.returned || 0}</span>
-                                <span class="stat-badge stat-pending">⏳ Pending: ${student.pending || 0}</span>
+                            <div class="student-actions">
+                                <button class="btn btn-issue" onclick="${issueClick}">📖 Issue Books</button>
+                                <button class="btn btn-return" onclick="${returnClick}">🔄 Return Books</button>
                             </div>
-                        </div>
-                        <div class="student-actions">
-                            <button class="btn btn-issue" onclick="openIssueModalForStudent('${escapeHtml(student.reg_no)}', '${escapeHtml(student.course)}')">📖 Issue Books</button>
-                            <button class="btn btn-return" onclick="openReturnModalForStudent('${escapeHtml(student.reg_no)}', '${escapeHtml(student.course)}')">🔄 Return Books</button>
                         </div>
                     </div>
-                </div>
-            `).join('')}
+                `;
+            }).join('')}
         </div>
     `;
 
     resultsContainer.innerHTML = listHtml;
 }
 
-// Get Book Statistics for a Student
-async function getBookStatistics(regNo) {
+// Get Book Statistics for a Student or Staff
+async function getBookStatistics(borrower) {
     try {
-        const { data, error } = await supabase
-            .from('book_issues')
-            .select('status')
-            .eq('student_reg_no', regNo);
+        const isStudent = borrower.borrower_type === 'student';
+        const query = supabase.from('book_issues').select('status');
+
+        if (isStudent) {
+            query.eq('student_reg_no', borrower.reg_no);
+        } else {
+            query.eq('staff_id', borrower.staff_id);
+        }
+
+        const { data, error } = await query;
 
         if (error) throw error;
 
@@ -1403,6 +1493,7 @@ window.openIssueModalForStudent = async function(regNo, course) {
     }
 
     selectedStudent = data;
+    selectedStaff = null;
     openIssueModal();
 }
 
@@ -1423,20 +1514,69 @@ window.openReturnModalForStudent = async function(regNo, course) {
     }
 
     selectedStudent = data;
+    selectedStaff = null;
+    openReturnModal();
+}
+
+// Open Issue Modal for Staff (called from button)
+window.openIssueModalForStaff = async function(staffId) {
+    const { data, error } = await supabase
+        .from('staff')
+        .select('*')
+        .eq('staff_id', staffId)
+        .single();
+
+    if (error || !data) {
+        console.error('Error loading staff:', error);
+        showToast('Error loading staff data', 'error');
+        return;
+    }
+
+    selectedStaff = data;
+    selectedStudent = null;
+    openIssueModal();
+}
+
+// Open Return Modal for Staff (called from button)
+window.openReturnModalForStaff = async function(staffId) {
+    const { data, error } = await supabase
+        .from('staff')
+        .select('*')
+        .eq('staff_id', staffId)
+        .single();
+
+    if (error || !data) {
+        console.error('Error loading staff:', error);
+        showToast('Error loading staff data', 'error');
+        return;
+    }
+
+    selectedStaff = data;
+    selectedStudent = null;
     openReturnModal();
 }
 
 // Open Issue Books Modal
 async function openIssueModal() {
-    if (!selectedStudent) return;
+    const borrower = selectedStudent || selectedStaff;
+    if (!borrower) return;
+
+    const isStudent = !!selectedStudent;
 
     try {
         // Fetch ALL data FIRST (before showing modal)
-        const { data: allBooks, error: allBooksError } = await supabase
+        const query = supabase
             .from('book_issues')
             .select('*')
-            .eq('student_reg_no', selectedStudent.reg_no)
             .order('issue_date', { ascending: false });
+
+        if (isStudent) {
+            query.eq('student_reg_no', selectedStudent.reg_no);
+        } else {
+            query.eq('staff_id', selectedStaff.staff_id);
+        }
+
+        const { data: allBooks, error: allBooksError } = await query;
 
         if (allBooksError) throw allBooksError;
 
@@ -1444,11 +1584,18 @@ async function openIssueModal() {
         const issuedBooks = allBooks ? allBooks.filter(book => book.status === 'issued') : [];
         bookEntryCount = issuedBooks.length;
 
-        // Set student info
-        document.getElementById('issueStudentName').textContent = selectedStudent.name;
-        document.getElementById('issueStudentRegNo').textContent = selectedStudent.reg_no;
-        document.getElementById('issueStudentCourse').textContent = selectedStudent.course;
-        document.getElementById('issueStudentYear').textContent = selectedStudent.year;
+        // Set borrower info based on type
+        document.getElementById('issueStudentName').textContent = borrower.name;
+
+        if (isStudent) {
+            document.getElementById('issueStudentRegNo').textContent = selectedStudent.reg_no;
+            document.getElementById('issueStudentCourse').textContent = selectedStudent.course;
+            document.getElementById('issueStudentYear').textContent = selectedStudent.year;
+        } else {
+            document.getElementById('issueStudentRegNo').textContent = `Staff ID: ${selectedStaff.staff_id}`;
+            document.getElementById('issueStudentCourse').textContent = selectedStaff.dept;
+            document.getElementById('issueStudentYear').textContent = selectedStaff.designation;
+        }
 
         // Clear and prepare books container
         const booksContainer = document.getElementById('booksContainer');
@@ -1508,11 +1655,21 @@ async function openIssueModal() {
     } catch (error) {
         console.error('Error opening issue modal:', error);
 
+        const borrower = selectedStudent || selectedStaff;
+        const isStudent = !!selectedStudent;
+
         // Set up modal even on error
-        document.getElementById('issueStudentName').textContent = selectedStudent.name;
-        document.getElementById('issueStudentRegNo').textContent = selectedStudent.reg_no;
-        document.getElementById('issueStudentCourse').textContent = selectedStudent.course;
-        document.getElementById('issueStudentYear').textContent = selectedStudent.year;
+        document.getElementById('issueStudentName').textContent = borrower.name;
+
+        if (isStudent) {
+            document.getElementById('issueStudentRegNo').textContent = selectedStudent.reg_no;
+            document.getElementById('issueStudentCourse').textContent = selectedStudent.course;
+            document.getElementById('issueStudentYear').textContent = selectedStudent.year;
+        } else {
+            document.getElementById('issueStudentRegNo').textContent = `Staff ID: ${selectedStaff.staff_id}`;
+            document.getElementById('issueStudentCourse').textContent = selectedStaff.dept;
+            document.getElementById('issueStudentYear').textContent = selectedStaff.designation;
+        }
 
         bookEntryCount = 0;
         const booksContainer = document.getElementById('booksContainer');
@@ -1531,13 +1688,23 @@ async function loadPreviouslyIssuedBooks() {
     const section = document.getElementById('previouslyIssuedSection');
     const container = document.getElementById('previouslyIssuedBooks');
 
+    const borrower = selectedStudent || selectedStaff;
+    const isStudent = !!selectedStudent;
+
     try {
         // Fetch ALL books (issued + returned) for complete history
-        const { data, error } = await supabase
+        const query = supabase
             .from('book_issues')
             .select('*')
-            .eq('student_reg_no', selectedStudent.reg_no)
             .order('issue_date', { ascending: false });
+
+        if (isStudent) {
+            query.eq('student_reg_no', selectedStudent.reg_no);
+        } else {
+            query.eq('staff_id', selectedStaff.staff_id);
+        }
+
+        const { data, error } = await query;
 
         if (error) throw error;
 
@@ -1601,11 +1768,26 @@ window.editIssuedBook = async function(bookId) {
         const bookElement = document.getElementById(`book-${bookId}`);
         if (!bookElement) return;
 
-        // Get semester options based on student year
-        const semesterOptions = getSemesterOptions(selectedStudent.year);
-        const semesterOptionsHtml = semesterOptions
-            .map(sem => `<option value="${sem}" ${sem === book.sem ? 'selected' : ''}>${sem}</option>`)
-            .join('');
+        const isStudent = !!selectedStudent;
+
+        // Get semester options (only for students)
+        let semesterField = '';
+        if (isStudent) {
+            const semesterOptions = getSemesterOptions(selectedStudent.year);
+            const semesterOptionsHtml = semesterOptions
+                .map(sem => `<option value="${sem}" ${sem === book.sem ? 'selected' : ''}>${sem}</option>`)
+                .join('');
+
+            semesterField = `
+                <select class="edit-book-sem">
+                    <option value="">Select Sem</option>
+                    ${semesterOptionsHtml}
+                </select>
+            `;
+        } else {
+            // For staff, show N/A
+            semesterField = `<input type="text" class="edit-book-sem" value="N/A" readonly />`;
+        }
 
         // Replace the display with editable inputs
         bookElement.innerHTML = `
@@ -1615,10 +1797,7 @@ window.editIssuedBook = async function(bookId) {
                     <input type="text" class="edit-book-name" value="${escapeHtml(book.book_name)}" placeholder="Book name" />
                     <input type="text" class="edit-book-author" value="${escapeHtml(book.author)}" placeholder="Author" />
                     <input type="text" class="edit-book-no" value="${escapeHtml(book.book_no)}" placeholder="Book no" />
-                    <select class="edit-book-sem">
-                        <option value="">Select Sem</option>
-                        ${semesterOptionsHtml}
-                    </select>
+                    ${semesterField}
                     <input type="text" class="edit-book-phone" value="${book.phone_no || ''}" placeholder="Phone no" />
                     <input type="date" class="edit-book-date" value="${book.issue_date}" />
                     <div class="edit-book-actions">
@@ -1661,7 +1840,8 @@ window.saveIssuedBook = async function(bookId) {
         const bookName = bookElement.querySelector('.edit-book-name').value.trim();
         const author = bookElement.querySelector('.edit-book-author').value.trim();
         const bookNo = bookElement.querySelector('.edit-book-no').value.trim();
-        const sem = bookElement.querySelector('.edit-book-sem').value;
+        const semInput = bookElement.querySelector('.edit-book-sem');
+        const sem = semInput && semInput.value !== 'N/A' ? semInput.value : null;
         const phoneNo = bookElement.querySelector('.edit-book-phone').value.trim();
         const issueDate = bookElement.querySelector('.edit-book-date').value;
 
@@ -1685,8 +1865,12 @@ window.saveIssuedBook = async function(bookId) {
         if (error) throw error;
 
         // Save phone number to localStorage for future use
-        if (phoneNo && selectedStudent) {
-            savePhoneNumber(selectedStudent.reg_no, phoneNo);
+        const borrower = selectedStudent || selectedStaff;
+        const isStudent = !!selectedStudent;
+        const identifier = isStudent ? selectedStudent.reg_no : selectedStaff.staff_id;
+
+        if (phoneNo && borrower) {
+            savePhoneNumber(identifier, phoneNo);
         }
 
         showToast('Book updated successfully', 'success');
@@ -1936,32 +2120,47 @@ function addBookEntry() {
     const container = document.getElementById('booksContainer');
     const currentEntries = container.querySelectorAll('tr').length;
 
+    const borrower = selectedStudent || selectedStaff;
+    const isStudent = !!selectedStudent;
+
     // Serial number based on currently issued books
     const slNo = bookEntryCount;
 
-    // Get semester options based on student year
-    const semesterOptions = getSemesterOptions(selectedStudent.year);
-    const semesterOptionsHtml = semesterOptions
-        .map(sem => `<option value="${sem}">${sem}</option>`)
-        .join('');
+    // Get semester options (only for students)
+    let semesterCell = '';
+    if (isStudent) {
+        const semesterOptions = getSemesterOptions(selectedStudent.year);
+        const semesterOptionsHtml = semesterOptions
+            .map(sem => `<option value="${sem}">${sem}</option>`)
+            .join('');
 
-    // Get saved phone number for this student
-    const savedPhone = getSavedPhoneNumber(selectedStudent.reg_no);
+        semesterCell = `
+            <select class="book-sem">
+                <option value="">Select</option>
+                ${semesterOptionsHtml}
+            </select>
+        `;
+    } else {
+        // For staff, hide semester selection
+        semesterCell = `<input type="text" class="book-sem" value="N/A" readonly>`;
+    }
+
+    // Get saved phone number
+    const identifier = isStudent ? selectedStudent.reg_no : selectedStaff.staff_id;
+    const savedPhone = getSavedPhoneNumber(identifier);
+
+    const yearValue = isStudent ? selectedStudent.year : selectedStaff.designation;
+    const courseValue = isStudent ? selectedStudent.course : selectedStaff.dept;
 
     const bookRow = document.createElement('tr');
     bookRow.dataset.bookId = bookEntryCount;
 
     bookRow.innerHTML = `
         <td><input type="text" class="book-sl-no" value="${slNo}" readonly></td>
-        <td><input type="text" class="book-student-name" value="${selectedStudent.name}" readonly></td>
-        <td>
-            <select class="book-sem">
-                <option value="">Select</option>
-                ${semesterOptionsHtml}
-            </select>
-        </td>
-        <td><input type="text" class="book-year" value="${selectedStudent.year}" readonly></td>
-        <td><input type="text" class="book-course" value="${selectedStudent.course}" readonly></td>
+        <td><input type="text" class="book-student-name" value="${borrower.name}" readonly></td>
+        <td>${semesterCell}</td>
+        <td><input type="text" class="book-year" value="${yearValue}" readonly></td>
+        <td><input type="text" class="book-course" value="${courseValue}" readonly></td>
         <td><input type="text" class="book-name" required placeholder="Book name"></td>
         <td><input type="text" class="book-author" required placeholder="Author"></td>
         <td><input type="text" class="book-no" required placeholder="Book no"></td>
@@ -1989,7 +2188,7 @@ function addBookEntry() {
     phoneInput.addEventListener('blur', (e) => {
         const phoneNo = e.target.value.trim();
         if (phoneNo) {
-            savePhoneNumber(selectedStudent.reg_no, phoneNo);
+            savePhoneNumber(identifier, phoneNo);
         }
     });
 }
@@ -2014,7 +2213,10 @@ function getCurrentDate() {
 
 // Submit Issue Books
 async function submitIssueBooks() {
-    if (!selectedStudent) return;
+    const borrower = selectedStudent || selectedStaff;
+    if (!borrower) return;
+
+    const isStudent = !!selectedStudent;
 
     const bookRows = document.querySelectorAll('#booksContainer tr');
     const books = [];
@@ -2026,7 +2228,8 @@ async function submitIssueBooks() {
         const author = row.querySelector('.book-author').value.trim();
         const bookNo = row.querySelector('.book-no').value.trim();
         const issueDate = row.querySelector('.book-date').value;
-        const sem = row.querySelector('.book-sem').value;
+        const semInput = row.querySelector('.book-sem');
+        const sem = semInput && semInput.value !== 'N/A' ? semInput.value : null;
         const phoneNo = row.querySelector('.book-phone').value.trim();
 
         // Clear previous errors
@@ -2041,21 +2244,33 @@ async function submitIssueBooks() {
             if (!issueDate) row.querySelector('.book-date').classList.add('error');
         } else {
             // Save phone number to localStorage if provided
+            const identifier = isStudent ? selectedStudent.reg_no : selectedStaff.staff_id;
             if (phoneNo) {
-                savePhoneNumber(selectedStudent.reg_no, phoneNo);
+                savePhoneNumber(identifier, phoneNo);
             }
 
-            books.push({
-                student_reg_no: selectedStudent.reg_no,
-                student_course: selectedStudent.course,
+            const bookRecord = {
+                borrower_type: isStudent ? 'student' : 'staff',
                 book_name: bookName,
                 author: author,
                 book_no: bookNo,
-                sem: sem || null,
+                sem: sem,
                 phone_no: phoneNo || null,
                 issue_date: issueDate,
                 status: 'issued'
-            });
+            };
+
+            if (isStudent) {
+                bookRecord.student_reg_no = selectedStudent.reg_no;
+                bookRecord.student_course = selectedStudent.course;
+                bookRecord.staff_id = null;
+            } else {
+                bookRecord.staff_id = selectedStaff.staff_id;
+                bookRecord.student_reg_no = null;
+                bookRecord.student_course = null;
+            }
+
+            books.push(bookRecord);
         }
     });
 
@@ -2076,7 +2291,7 @@ async function submitIssueBooks() {
 
         if (error) throw error;
 
-        showToast(`Successfully issued ${books.length} book(s) to ${selectedStudent.name}`, 'success');
+        showToast(`Successfully issued ${books.length} book(s) to ${borrower.name}`, 'success');
         closeModal('issueModal');
 
         // Refresh dashboard
@@ -2092,24 +2307,34 @@ async function submitIssueBooks() {
 
 // Open Return Books Modal
 async function openReturnModal() {
-    if (!selectedStudent) return;
+    const borrower = selectedStudent || selectedStaff;
+    if (!borrower) return;
+
+    const isStudent = !!selectedStudent;
 
     // Fetch books data FIRST (before showing modal)
     const container = document.getElementById('issuedBooksContainer');
 
     try {
-        const { data, error } = await supabase
+        const query = supabase
             .from('book_issues')
             .select('*')
-            .eq('student_reg_no', selectedStudent.reg_no)
             .eq('status', 'issued')
-            .order('issue_date', { ascending: false });
+            .order('issue_date', { ascending: false});
+
+        if (isStudent) {
+            query.eq('student_reg_no', selectedStudent.reg_no);
+        } else {
+            query.eq('staff_id', selectedStaff.staff_id);
+        }
+
+        const { data, error } = await query;
 
         if (error) throw error;
 
-        // Set student info
-        document.getElementById('returnStudentName').textContent = selectedStudent.name;
-        document.getElementById('returnStudentRegNo').textContent = selectedStudent.reg_no;
+        // Set borrower info
+        document.getElementById('returnStudentName').textContent = borrower.name;
+        document.getElementById('returnStudentRegNo').textContent = isStudent ? selectedStudent.reg_no : `Staff ID: ${selectedStaff.staff_id}`;
 
         // Prepare the content based on data
         if (data.length === 0) {
@@ -2147,9 +2372,12 @@ async function openReturnModal() {
     } catch (error) {
         console.error('Load issued books error:', error);
 
-        // Set student info even on error
-        document.getElementById('returnStudentName').textContent = selectedStudent.name;
-        document.getElementById('returnStudentRegNo').textContent = selectedStudent.reg_no;
+        const borrower = selectedStudent || selectedStaff;
+        const isStudent = !!selectedStudent;
+
+        // Set borrower info even on error
+        document.getElementById('returnStudentName').textContent = borrower.name;
+        document.getElementById('returnStudentRegNo').textContent = isStudent ? selectedStudent.reg_no : `Staff ID: ${selectedStaff.staff_id}`;
 
         container.innerHTML = `
             <div class="empty-issued-books">
@@ -2168,13 +2396,23 @@ async function openReturnModal() {
 async function loadIssuedBooks() {
     const container = document.getElementById('issuedBooksContainer');
 
+    const borrower = selectedStudent || selectedStaff;
+    const isStudent = !!selectedStudent;
+
     try {
-        const { data, error } = await supabase
+        const query = supabase
             .from('book_issues')
             .select('*')
-            .eq('student_reg_no', selectedStudent.reg_no)
             .eq('status', 'issued')
-            .order('issue_date', { ascending: false });
+            .order('issue_date', { ascending: false});
+
+        if (isStudent) {
+            query.eq('student_reg_no', selectedStudent.reg_no);
+        } else {
+            query.eq('staff_id', selectedStaff.staff_id);
+        }
+
+        const { data, error } = await query;
 
         if (error) throw error;
 
@@ -2182,7 +2420,7 @@ async function loadIssuedBooks() {
             container.innerHTML = `
                 <div class="empty-issued-books">
                     <p>📚 No issued books found</p>
-                    <p style="font-size: 0.9rem; margin-top: 0.5rem;">This student has no books currently issued.</p>
+                    <p style="font-size: 0.9rem; margin-top: 0.5rem;">This ${isStudent ? 'student' : 'staff member'} has no books currently issued.</p>
                 </div>
             `;
             document.getElementById('submitReturnBtn').disabled = true;
@@ -2273,17 +2511,32 @@ async function refreshSearchResults() {
     // If there's a search term, refresh search results
     if (searchTerm) {
         try {
-            const { data, error } = await supabase
+            // Search both students and staff
+            const { data: students, error: studentsError } = await supabase
                 .from('students')
                 .select('*')
                 .or(`name.ilike.%${searchTerm}%,father.ilike.%${searchTerm}%,reg_no.ilike.%${searchTerm}%`)
                 .order('name')
                 .limit(10);
 
-            if (error) throw error;
+            if (studentsError) throw studentsError;
+
+            const { data: staff, error: staffError } = await supabase
+                .from('staff')
+                .select('*')
+                .or(`name.ilike.%${searchTerm}%,dept.ilike.%${searchTerm}%,designation.ilike.%${searchTerm}%,staff_id.ilike.%${searchTerm}%`)
+                .order('name')
+                .limit(10);
+
+            if (staffError) throw staffError;
+
+            // Combine results with borrower_type identifier
+            const studentsWithType = (students || []).map(s => ({ ...s, borrower_type: 'student' }));
+            const staffWithType = (staff || []).map(s => ({ ...s, borrower_type: 'staff' }));
+            const combinedResults = [...studentsWithType, ...staffWithType];
 
             // Re-display results with updated counts
-            await displayResults(data);
+            await displayResults(combinedResults);
         } catch (error) {
             console.error('Refresh search error:', error);
         }
