@@ -154,6 +154,15 @@ async function loadConfig() {
 
 // Setup Event Listeners
 function setupEventListeners() {
+    // Global click handler to close autocomplete
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.autocomplete-dropdown') &&
+            !e.target.classList.contains('book-name') &&
+            !e.target.classList.contains('book-author')) {
+            hideAutocomplete();
+        }
+    });
+
     // Hamburger menu
     document.getElementById('hamburgerMenuBtn').addEventListener('click', openHamburgerMenu);
     document.getElementById('closeMenuBtn').addEventListener('click', closeHamburgerMenu);
@@ -1344,8 +1353,8 @@ async function displayResults(students) {
                             </div>
                         </div>
                         <div class="student-actions">
-                            <button class="btn btn-issue" onclick="openIssueModalForStudent('${escapeHtml(student.reg_no)}')">📖 Issue Books</button>
-                            <button class="btn btn-return" onclick="openReturnModalForStudent('${escapeHtml(student.reg_no)}')">🔄 Return Books</button>
+                            <button class="btn btn-issue" onclick="openIssueModalForStudent('${escapeHtml(student.reg_no)}', '${escapeHtml(student.course)}')">📖 Issue Books</button>
+                            <button class="btn btn-return" onclick="openReturnModalForStudent('${escapeHtml(student.reg_no)}', '${escapeHtml(student.course)}')">🔄 Return Books</button>
                         </div>
                     </div>
                 </div>
@@ -1378,15 +1387,17 @@ async function getBookStatistics(regNo) {
 }
 
 // Open Issue Modal for Student (called from button)
-window.openIssueModalForStudent = async function(regNo) {
-    // Find student data
+window.openIssueModalForStudent = async function(regNo, course) {
+    // Find student data - use both reg_no and course as they form composite key
     const { data, error } = await supabase
         .from('students')
         .select('*')
         .eq('reg_no', regNo)
+        .eq('course', course)
         .single();
 
     if (error || !data) {
+        console.error('Error loading student:', error);
         showToast('Error loading student data', 'error');
         return;
     }
@@ -1396,15 +1407,17 @@ window.openIssueModalForStudent = async function(regNo) {
 }
 
 // Open Return Modal for Student (called from button)
-window.openReturnModalForStudent = async function(regNo) {
-    // Find student data
+window.openReturnModalForStudent = async function(regNo, course) {
+    // Find student data - use both reg_no and course as they form composite key
     const { data, error } = await supabase
         .from('students')
         .select('*')
         .eq('reg_no', regNo)
+        .eq('course', course)
         .single();
 
     if (error || !data) {
+        console.error('Error loading student:', error);
         showToast('Error loading student data', 'error');
         return;
     }
@@ -1742,6 +1755,168 @@ function getSavedPhoneNumber(regNo) {
     }
 }
 
+// Autocomplete functionality for book name and author
+let allBooksCache = null;
+let autocompleteTimeout = null;
+
+// Fetch all unique books from database
+async function fetchAllBooks() {
+    if (allBooksCache) return allBooksCache;
+
+    try {
+        const { data, error } = await supabase
+            .from('book_issues')
+            .select('book_name, author, book_no')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        // Create unique books array based on book_name + author combination
+        const uniqueBooksMap = new Map();
+        data?.forEach(book => {
+            const key = `${book.book_name}_${book.author}`.toLowerCase();
+            if (!uniqueBooksMap.has(key)) {
+                uniqueBooksMap.set(key, {
+                    book_name: book.book_name,
+                    author: book.author,
+                    book_no: book.book_no
+                });
+            }
+        });
+
+        allBooksCache = Array.from(uniqueBooksMap.values());
+        return allBooksCache;
+    } catch (error) {
+        console.error('Error fetching books for autocomplete:', error);
+        return [];
+    }
+}
+
+// Show autocomplete suggestions
+function showAutocomplete(inputElement, suggestions, onSelect) {
+    // Remove any existing autocomplete dropdown
+    hideAutocomplete();
+
+    if (suggestions.length === 0) return;
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'autocomplete-dropdown';
+    dropdown.id = 'autocompleteDropdown';
+
+    suggestions.forEach(book => {
+        const item = document.createElement('div');
+        item.className = 'autocomplete-item';
+        item.innerHTML = `
+            <div class="autocomplete-book-name">${escapeHtml(book.book_name)}</div>
+            <div class="autocomplete-book-meta">
+                <span>by ${escapeHtml(book.author)}</span>
+                ${book.book_no ? ` • Book #${escapeHtml(book.book_no)}` : ''}
+            </div>
+        `;
+
+        item.addEventListener('click', () => {
+            onSelect(book);
+            hideAutocomplete();
+        });
+
+        dropdown.appendChild(item);
+    });
+
+    // Position dropdown using fixed positioning to avoid clipping
+    const rect = inputElement.getBoundingClientRect();
+    dropdown.style.position = 'fixed';
+    dropdown.style.top = `${rect.bottom}px`;
+    dropdown.style.left = `${rect.left}px`;
+    dropdown.style.width = `${rect.width}px`;
+    document.body.appendChild(dropdown);
+}
+
+// Hide autocomplete dropdown
+function hideAutocomplete() {
+    const existing = document.getElementById('autocompleteDropdown');
+    if (existing) {
+        existing.remove();
+    }
+}
+
+// Setup autocomplete for book name input
+function setupBookNameAutocomplete(inputElement, row) {
+    inputElement.addEventListener('input', async (e) => {
+        e.target.value = e.target.value.toUpperCase();
+        const searchTerm = e.target.value.trim();
+
+        if (searchTerm.length < 2) {
+            hideAutocomplete();
+            return;
+        }
+
+        clearTimeout(autocompleteTimeout);
+        autocompleteTimeout = setTimeout(async () => {
+            const allBooks = await fetchAllBooks();
+            const filtered = allBooks
+                .filter(book => book.book_name.toLowerCase().includes(searchTerm.toLowerCase()))
+                .slice(0, 4);
+
+            showAutocomplete(inputElement, filtered, (book) => {
+                // Fill in book name
+                inputElement.value = book.book_name;
+
+                // Fill in author
+                const authorInput = row.querySelector('.book-author');
+                if (authorInput) authorInput.value = book.author;
+
+                // Fill in book number if available
+                const bookNoInput = row.querySelector('.book-no');
+                if (bookNoInput && book.book_no) bookNoInput.value = book.book_no;
+            });
+        }, 300);
+    });
+
+    // Hide dropdown when input loses focus (with delay to allow click)
+    inputElement.addEventListener('blur', () => {
+        setTimeout(hideAutocomplete, 200);
+    });
+}
+
+// Setup autocomplete for author input
+function setupAuthorAutocomplete(inputElement, row) {
+    inputElement.addEventListener('input', async (e) => {
+        e.target.value = e.target.value.toUpperCase();
+        const searchTerm = e.target.value.trim();
+
+        if (searchTerm.length < 2) {
+            hideAutocomplete();
+            return;
+        }
+
+        clearTimeout(autocompleteTimeout);
+        autocompleteTimeout = setTimeout(async () => {
+            const allBooks = await fetchAllBooks();
+            const filtered = allBooks
+                .filter(book => book.author.toLowerCase().includes(searchTerm.toLowerCase()))
+                .slice(0, 4);
+
+            showAutocomplete(inputElement, filtered, (book) => {
+                // Fill in author
+                inputElement.value = book.author;
+
+                // Fill in book name
+                const bookNameInput = row.querySelector('.book-name');
+                if (bookNameInput) bookNameInput.value = book.book_name;
+
+                // Fill in book number if available
+                const bookNoInput = row.querySelector('.book-no');
+                if (bookNoInput && book.book_no) bookNoInput.value = book.book_no;
+            });
+        }, 300);
+    });
+
+    // Hide dropdown when input loses focus (with delay to allow click)
+    inputElement.addEventListener('blur', () => {
+        setTimeout(hideAutocomplete, 200);
+    });
+}
+
 // Save Phone Number for Student
 function savePhoneNumber(regNo, phoneNo) {
     try {
@@ -1801,18 +1976,14 @@ function addBookEntry() {
 
     container.appendChild(bookRow);
 
-    // Add uppercase conversion for book name and author
+    // Get input elements
     const bookNameInput = bookRow.querySelector('.book-name');
     const authorInput = bookRow.querySelector('.book-author');
     const phoneInput = bookRow.querySelector('.book-phone');
 
-    bookNameInput.addEventListener('input', (e) => {
-        e.target.value = e.target.value.toUpperCase();
-    });
-
-    authorInput.addEventListener('input', (e) => {
-        e.target.value = e.target.value.toUpperCase();
-    });
+    // Setup autocomplete for book name and author
+    setupBookNameAutocomplete(bookNameInput, bookRow);
+    setupAuthorAutocomplete(authorInput, bookRow);
 
     // Save phone number on blur
     phoneInput.addEventListener('blur', (e) => {
@@ -2129,6 +2300,7 @@ function showModal(modalId) {
 
 function closeModal(modalId) {
     document.getElementById(modalId).classList.remove('active');
+    hideAutocomplete(); // Close autocomplete when modal closes
 }
 
 // Show/Hide Loading
