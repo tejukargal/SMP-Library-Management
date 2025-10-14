@@ -1417,49 +1417,98 @@ window.openReturnModalForStudent = async function(regNo) {
 async function openIssueModal() {
     if (!selectedStudent) return;
 
-    // Show modal immediately with loading state
-    showModal('issueModal');
-
-    // Set student info
-    document.getElementById('issueStudentName').textContent = selectedStudent.name;
-    document.getElementById('issueStudentRegNo').textContent = selectedStudent.reg_no;
-    document.getElementById('issueStudentCourse').textContent = selectedStudent.course;
-    document.getElementById('issueStudentYear').textContent = selectedStudent.year;
-
-    // Show loading in previously issued section
-    const previouslyIssuedSection = document.getElementById('previouslyIssuedSection');
-    const previouslyIssuedContainer = document.getElementById('previouslyIssuedBooks');
-    previouslyIssuedSection.style.display = 'block';
-    previouslyIssuedContainer.innerHTML = '<div class="loading-indicator"><div class="spinner"></div><span>Loading history...</span></div>';
-
-    // Reset books container with loading state
-    const booksContainer = document.getElementById('booksContainer');
-    booksContainer.innerHTML = '<tr><td colspan="11" style="text-align: center; padding: 1rem;">Loading...</td></tr>';
-
     try {
-        // Get the count of currently issued books (not returned) for this student
-        const { data, error } = await supabase
+        // Fetch ALL data FIRST (before showing modal)
+        const { data: allBooks, error: allBooksError } = await supabase
             .from('book_issues')
-            .select('id')
+            .select('*')
             .eq('student_reg_no', selectedStudent.reg_no)
-            .eq('status', 'issued');
+            .order('issue_date', { ascending: false });
 
-        if (error) throw error;
+        if (allBooksError) throw allBooksError;
 
-        bookEntryCount = data ? data.length : 0;
+        // Get count of currently issued books (not returned)
+        const issuedBooks = allBooks ? allBooks.filter(book => book.status === 'issued') : [];
+        bookEntryCount = issuedBooks.length;
 
-        // Reset books container
+        // Set student info
+        document.getElementById('issueStudentName').textContent = selectedStudent.name;
+        document.getElementById('issueStudentRegNo').textContent = selectedStudent.reg_no;
+        document.getElementById('issueStudentCourse').textContent = selectedStudent.course;
+        document.getElementById('issueStudentYear').textContent = selectedStudent.year;
+
+        // Clear and prepare books container
+        const booksContainer = document.getElementById('booksContainer');
         booksContainer.innerHTML = '';
-
-        // Load previously issued books
-        await loadPreviouslyIssuedBooks();
 
         // Add first book entry
         addBookEntry();
+
+        // Set up previously issued section based on data
+        const previouslyIssuedSection = document.getElementById('previouslyIssuedSection');
+        const previouslyIssuedContainer = document.getElementById('previouslyIssuedBooks');
+
+        if (allBooks && allBooks.length > 0) {
+            // Student has book history - show the section
+            previouslyIssuedSection.style.display = 'block';
+
+            const booksHtml = allBooks.map((book) => {
+                const statusBadge = book.status === 'issued'
+                    ? '<span class="status-badge status-issued">⏳ Pending</span>'
+                    : '<span class="status-badge status-returned">✅ Returned</span>';
+
+                const returnInfo = book.status === 'returned' && book.return_date
+                    ? ` • Returned: ${formatDate(book.return_date)}`
+                    : '';
+
+                // Add Edit button only for issued books
+                const actionButtons = book.status === 'issued' ? `
+                    <div class="book-action-buttons">
+                        <button class="btn-book-edit" onclick="editIssuedBook('${book.id}')" title="Edit">✏️ Edit</button>
+                    </div>
+                ` : '';
+
+                return `
+                    <div class="previously-issued-item ${book.status}" id="book-${book.id}">
+                        <div class="book-info-inline">
+                            ${statusBadge}
+                            <strong class="book-display-name">${escapeHtml(book.book_name)}</strong>
+                            <span class="book-author-meta">by <span class="book-display-author">${escapeHtml(book.author)}</span></span>
+                            <span class="book-meta">Book #<span class="book-display-no">${escapeHtml(book.book_no)}</span> • Issued: <span class="book-display-date">${formatDate(book.issue_date)}</span>${returnInfo}</span>
+                            ${book.sem ? `<span class="book-meta">• Sem: ${escapeHtml(book.sem)}</span>` : ''}
+                            ${book.phone_no ? `<span class="book-meta">• Phone: ${escapeHtml(book.phone_no)}</span>` : ''}
+                        </div>
+                        ${actionButtons}
+                    </div>
+                `;
+            }).join('');
+
+            previouslyIssuedContainer.innerHTML = booksHtml;
+        } else {
+            // No book history - hide the section
+            previouslyIssuedSection.style.display = 'none';
+        }
+
+        // NOW show modal with everything ready
+        showModal('issueModal');
+
     } catch (error) {
         console.error('Error opening issue modal:', error);
+
+        // Set up modal even on error
+        document.getElementById('issueStudentName').textContent = selectedStudent.name;
+        document.getElementById('issueStudentRegNo').textContent = selectedStudent.reg_no;
+        document.getElementById('issueStudentCourse').textContent = selectedStudent.course;
+        document.getElementById('issueStudentYear').textContent = selectedStudent.year;
+
+        bookEntryCount = 0;
+        const booksContainer = document.getElementById('booksContainer');
         booksContainer.innerHTML = '';
         addBookEntry();
+
+        document.getElementById('previouslyIssuedSection').style.display = 'none';
+
+        showModal('issueModal');
         showToast('Error loading book history', 'warning');
     }
 }
@@ -1874,21 +1923,79 @@ async function submitIssueBooks() {
 async function openReturnModal() {
     if (!selectedStudent) return;
 
-    // Show modal immediately
-    showModal('returnModal');
+    // Fetch books data FIRST (before showing modal)
+    const container = document.getElementById('issuedBooksContainer');
 
-    // Set student info
-    document.getElementById('returnStudentName').textContent = selectedStudent.name;
-    document.getElementById('returnStudentRegNo').textContent = selectedStudent.reg_no;
+    try {
+        const { data, error } = await supabase
+            .from('book_issues')
+            .select('*')
+            .eq('student_reg_no', selectedStudent.reg_no)
+            .eq('status', 'issued')
+            .order('issue_date', { ascending: false });
 
-    // Load issued books asynchronously (already has loading indicator)
-    await loadIssuedBooks();
+        if (error) throw error;
+
+        // Set student info
+        document.getElementById('returnStudentName').textContent = selectedStudent.name;
+        document.getElementById('returnStudentRegNo').textContent = selectedStudent.reg_no;
+
+        // Prepare the content based on data
+        if (data.length === 0) {
+            container.innerHTML = `
+                <div class="empty-issued-books">
+                    <p>📚 No issued books found</p>
+                    <p style="font-size: 0.9rem; margin-top: 0.5rem;">This student has no books currently issued.</p>
+                </div>
+            `;
+            document.getElementById('submitReturnBtn').disabled = true;
+        } else {
+            const booksHtml = data.map(book => `
+                <div class="issued-book-item">
+                    <div class="book-checkbox">
+                        <input type="checkbox" data-book-id="${book.id}" class="book-return-checkbox">
+                    </div>
+                    <div class="book-info">
+                        <div class="book-title">${escapeHtml(book.book_name)}</div>
+                        <div class="book-details">
+                            <div><strong>Author:</strong> ${escapeHtml(book.author)}</div>
+                            <div><strong>Book No:</strong> ${escapeHtml(book.book_no)}</div>
+                            <div><strong>Issue Date:</strong> ${formatDate(book.issue_date)}</div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            container.innerHTML = booksHtml;
+            document.getElementById('submitReturnBtn').disabled = false;
+        }
+
+        // NOW show modal with all content ready
+        showModal('returnModal');
+
+    } catch (error) {
+        console.error('Load issued books error:', error);
+
+        // Set student info even on error
+        document.getElementById('returnStudentName').textContent = selectedStudent.name;
+        document.getElementById('returnStudentRegNo').textContent = selectedStudent.reg_no;
+
+        container.innerHTML = `
+            <div class="empty-issued-books">
+                <p>❌ Error loading books</p>
+                <p style="font-size: 0.9rem; margin-top: 0.5rem;">${error.message}</p>
+            </div>
+        `;
+        document.getElementById('submitReturnBtn').disabled = true;
+
+        // Show modal even with error
+        showModal('returnModal');
+    }
 }
 
-// Load Issued Books
+// Load Issued Books (used for refreshing after return)
 async function loadIssuedBooks() {
     const container = document.getElementById('issuedBooksContainer');
-    container.innerHTML = '<div class="loading-indicator"><div class="spinner"></div><span>Loading...</span></div>';
 
     try {
         const { data, error } = await supabase
@@ -1938,6 +2045,7 @@ async function loadIssuedBooks() {
                 <p style="font-size: 0.9rem; margin-top: 0.5rem;">${error.message}</p>
             </div>
         `;
+        document.getElementById('submitReturnBtn').disabled = true;
     }
 }
 
