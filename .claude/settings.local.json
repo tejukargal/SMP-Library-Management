@@ -18,7 +18,11 @@
       "Bash(git branch:*)",
       "Bash(git remote add:*)",
       "Bash(git push:*)",
-      "Bash(gh:*)"
+      "Bash(gh:*)",
+      "Read(//d/Apps/Html_SMP Admn Stats_1 25-26/**)",
+      "Read(//c/Users/Lekhana/Downloads/**)",
+      "mcp__ide__getDiagnostics",
+      "Bash(npm run import:staff:*)"
     ],
     "deny": [],
     "ask": []
