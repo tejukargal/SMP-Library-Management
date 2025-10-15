@@ -363,6 +363,11 @@ header h1 {
     font-size: 2rem;
     font-weight: 700;
     line-height: 1.2;
+    transition: opacity 0.15s ease-in-out;
+}
+
+.metric-course-label {
+    transition: opacity 0.15s ease-in-out;
 }
 
 .metric-label {

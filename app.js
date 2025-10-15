@@ -7,6 +7,18 @@ let selectedStudent = null;
 let selectedStaff = null;
 let bookEntryCount = 0;
 
+// Course rotation state for dynamic metrics
+let courseWiseIssuedCounts = {};
+let coursesList = [];
+let currentCourseIndex = 0;
+let courseRotationInterval = null;
+
+// Student rotation state for dynamic metrics
+let courseWiseStudentCounts = {};
+let studentCoursesList = [];
+let currentStudentCourseIndex = 0;
+let studentCourseRotationInterval = null;
+
 // Authentication credentials
 const VALID_CREDENTIALS = [
     { username: 'admin', password: 'anandamc' },
@@ -610,9 +622,31 @@ async function loadDashboard() {
         const totalReturned = returnedBooks.length;
         const totalPending = issuedBooks.length;
 
+        // Calculate course-wise issued book counts for dynamic display
+        courseWiseIssuedCounts = { 'All Courses': totalIssued };
+        const courseCounts = {};
+
+        allBooks?.forEach(book => {
+            const course = book.students?.course || book.staff?.dept || 'Unknown';
+            if (!courseCounts[course]) {
+                courseCounts[course] = 0;
+            }
+            courseCounts[course]++;
+        });
+
+        // Merge course counts and sort courses
+        Object.assign(courseWiseIssuedCounts, courseCounts);
+        coursesList = Object.keys(courseWiseIssuedCounts).sort();
+
+        // Start with "All Courses"
+        currentCourseIndex = 0;
         document.getElementById('totalIssuedBooks').textContent = totalIssued;
+        document.getElementById('issuedCourseName').textContent = 'All Courses';
         document.getElementById('totalReturnedBooks').textContent = totalReturned;
         document.getElementById('totalPendingBooks').textContent = totalPending;
+
+        // Start the course rotation
+        startCourseRotation();
 
         // Load students count
         await loadStudentsCount();
@@ -629,6 +663,86 @@ async function loadDashboard() {
             const elem = document.getElementById(id);
             if (elem) elem.textContent = '0';
         });
+    }
+}
+
+// Start course rotation for dynamic metric display
+function startCourseRotation() {
+    // Clear any existing interval
+    if (courseRotationInterval) {
+        clearInterval(courseRotationInterval);
+    }
+
+    // Only start rotation if we have multiple courses
+    if (coursesList.length > 1) {
+        courseRotationInterval = setInterval(rotateCourseDisplay, 4000);
+    }
+}
+
+// Rotate through course-wise issued book counts
+function rotateCourseDisplay() {
+    if (coursesList.length === 0) return;
+
+    // Move to next course
+    currentCourseIndex = (currentCourseIndex + 1) % coursesList.length;
+    const currentCourse = coursesList[currentCourseIndex];
+    const count = courseWiseIssuedCounts[currentCourse] || 0;
+
+    // Update display with smooth transition
+    const valueElement = document.getElementById('totalIssuedBooks');
+    const labelElement = document.getElementById('issuedCourseName');
+
+    if (valueElement && labelElement) {
+        // Add fade effect
+        valueElement.style.opacity = '0.5';
+        labelElement.style.opacity = '0.5';
+
+        setTimeout(() => {
+            valueElement.textContent = count;
+            labelElement.textContent = currentCourse;
+            valueElement.style.opacity = '1';
+            labelElement.style.opacity = '1';
+        }, 150);
+    }
+}
+
+// Start student course rotation for dynamic metric display
+function startStudentCourseRotation() {
+    // Clear any existing interval
+    if (studentCourseRotationInterval) {
+        clearInterval(studentCourseRotationInterval);
+    }
+
+    // Only start rotation if we have multiple courses
+    if (studentCoursesList.length > 1) {
+        studentCourseRotationInterval = setInterval(rotateStudentCourseDisplay, 4000);
+    }
+}
+
+// Rotate through course-wise student counts
+function rotateStudentCourseDisplay() {
+    if (studentCoursesList.length === 0) return;
+
+    // Move to next course
+    currentStudentCourseIndex = (currentStudentCourseIndex + 1) % studentCoursesList.length;
+    const currentCourse = studentCoursesList[currentStudentCourseIndex];
+    const count = courseWiseStudentCounts[currentCourse] || 0;
+
+    // Update display with smooth transition
+    const valueElement = document.getElementById('totalStudents');
+    const labelElement = document.getElementById('studentsCourseName');
+
+    if (valueElement && labelElement) {
+        // Add fade effect
+        valueElement.style.opacity = '0.5';
+        labelElement.style.opacity = '0.5';
+
+        setTimeout(() => {
+            valueElement.textContent = count;
+            labelElement.textContent = currentCourse;
+            valueElement.style.opacity = '1';
+            labelElement.style.opacity = '1';
+        }, 150);
     }
 }
 
@@ -650,13 +764,38 @@ async function loadStudentsCount() {
         // Count unique students by (reg_no, course) combination
         // EE (Unaided) and other courses (Aided) have separate Reg No sequences that may overlap
         const uniqueStudents = new Set();
+        const courseCounts = {};
+
         students?.forEach(student => {
             const uniqueKey = `${student.reg_no}_${student.course}`;
             uniqueStudents.add(uniqueKey);
+
+            // Count by course
+            const course = student.course || 'Unknown';
+            if (!courseCounts[course]) {
+                courseCounts[course] = new Set();
+            }
+            courseCounts[course].add(uniqueKey);
         });
 
         const totalStudents = uniqueStudents.size;
+
+        // Calculate course-wise student counts for dynamic display
+        courseWiseStudentCounts = { 'All Courses': totalStudents };
+        Object.keys(courseCounts).forEach(course => {
+            courseWiseStudentCounts[course] = courseCounts[course].size;
+        });
+
+        // Sort courses alphabetically
+        studentCoursesList = Object.keys(courseWiseStudentCounts).sort();
+
+        // Start with "All Courses"
+        currentStudentCourseIndex = 0;
         document.getElementById('totalStudents').textContent = totalStudents;
+        document.getElementById('studentsCourseName').textContent = 'All Courses';
+
+        // Start the student course rotation
+        startStudentCourseRotation();
 
         console.log('Total students counted:', totalStudents);
     } catch (error) {
