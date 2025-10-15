@@ -1007,6 +1007,20 @@ header h1 {
     color: #c2410c;
 }
 
+.pending-badge-tooltip {
+    cursor: help;
+    position: relative;
+}
+
+.pending-badge-tooltip:hover {
+    background: #fdba74;
+}
+
+/* Enhanced tooltip styling - white-space: pre-line allows line breaks in title */
+.pending-badge-tooltip[title] {
+    white-space: pre-line;
+}
+
 /* Student Actions */
 .student-actions {
     display: flex;

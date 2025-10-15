@@ -1401,16 +1401,22 @@ async function displayResults(results) {
                 const isStudent = result.borrower_type === 'student';
 
                 // Different details based on borrower type
+                const semDisplay = result.latestSem ? `<span><strong>Sem:</strong> ${escapeHtml(result.latestSem)}</span>` : '';
+                const phoneDisplay = result.latestPhone ? `<span><strong>Phone:</strong> ${escapeHtml(result.latestPhone)}</span>` : '';
+
                 const detailsHtml = isStudent ? `
                     <span><strong>Reg No:</strong> ${escapeHtml(result.reg_no)}</span>
                     <span><strong>Father:</strong> ${escapeHtml(result.father)}</span>
                     <span><strong>Year:</strong> ${escapeHtml(result.year)}</span>
                     <span><strong>Course:</strong> ${escapeHtml(result.course)}</span>
+                    ${semDisplay}
+                    ${phoneDisplay}
                 ` : `
                     <span><strong>Staff ID:</strong> ${escapeHtml(result.staff_id)}</span>
                     <span><strong>Department:</strong> ${escapeHtml(result.dept)}</span>
                     <span><strong>Designation:</strong> ${escapeHtml(result.designation)}</span>
                     <span><strong>Type:</strong> ${escapeHtml(result.type)}</span>
+                    ${phoneDisplay}
                 `;
 
                 // Different badge and onclick handlers based on borrower type
@@ -1433,7 +1439,7 @@ async function displayResults(results) {
                                 <div class="book-stats">
                                     <span class="stat-badge stat-issued">📚 Issued: ${result.issued || 0}</span>
                                     <span class="stat-badge stat-returned">✅ Returned: ${result.returned || 0}</span>
-                                    <span class="stat-badge stat-pending">⏳ Pending: ${result.pending || 0}</span>
+                                    <span class="stat-badge stat-pending pending-badge-tooltip" title="${result.pendingBooksInfo && result.pendingBooksInfo.length > 0 ? result.pendingBooksInfo.map(book => `${escapeHtml(book.name)} by ${escapeHtml(book.author)}`).join('&#10;') : 'No pending books'}">⏳ Pending: ${result.pending || 0}</span>
                                 </div>
                             </div>
                             <div class="student-actions">
@@ -1454,13 +1460,16 @@ async function displayResults(results) {
 async function getBookStatistics(borrower) {
     try {
         const isStudent = borrower.borrower_type === 'student';
-        const query = supabase.from('book_issues').select('status');
+        const query = supabase.from('book_issues').select('status, book_name, author, sem, phone_no, issue_date');
 
         if (isStudent) {
             query.eq('student_reg_no', borrower.reg_no);
+            query.eq('student_course', borrower.course);
         } else {
             query.eq('staff_id', borrower.staff_id);
         }
+
+        query.order('issue_date', { ascending: false });
 
         const { data, error } = await query;
 
@@ -1468,12 +1477,30 @@ async function getBookStatistics(borrower) {
 
         const totalIssued = data.length; // Total books ever issued (issued + returned)
         const returned = data.filter(book => book.status === 'returned').length;
-        const pending = data.filter(book => book.status === 'issued').length; // Currently pending books
+        const pendingBooks = data.filter(book => book.status === 'issued'); // Currently pending books
+        const pending = pendingBooks.length;
 
-        return { issued: totalIssued, returned, pending };
+        // Get latest semester and phone number from most recent book issue
+        const latestSem = data.length > 0 && data[0].sem ? data[0].sem : null;
+        const latestPhone = data.length > 0 && data[0].phone_no ? data[0].phone_no : null;
+
+        // Get pending books details for tooltip
+        const pendingBooksInfo = pendingBooks.map(book => ({
+            name: book.book_name,
+            author: book.author
+        }));
+
+        return {
+            issued: totalIssued,
+            returned,
+            pending,
+            latestSem,
+            latestPhone,
+            pendingBooksInfo
+        };
     } catch (error) {
         console.error('Error fetching book statistics:', error);
-        return { issued: 0, returned: 0, pending: 0 };
+        return { issued: 0, returned: 0, pending: 0, latestSem: null, latestPhone: null, pendingBooksInfo: [] };
     }
 }
 
