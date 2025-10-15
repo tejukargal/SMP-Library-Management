@@ -1336,10 +1336,11 @@ async function performSearch() {
     showLoading(true);
 
     try {
-        // Search students
+        // Search students (only those currently admitted with 'In' status)
         const { data: students, error: studentsError } = await supabase
             .from('students')
             .select('*')
+            .eq('in_out', 'In')
             .or(`name.ilike.%${searchTerm}%,father.ilike.%${searchTerm}%,reg_no.ilike.%${searchTerm}%`)
             .order('name')
             .limit(10);
@@ -2511,10 +2512,11 @@ async function refreshSearchResults() {
     // If there's a search term, refresh search results
     if (searchTerm) {
         try {
-            // Search both students and staff
+            // Search both students and staff (only students with 'In' status)
             const { data: students, error: studentsError } = await supabase
                 .from('students')
                 .select('*')
+                .eq('in_out', 'In')
                 .or(`name.ilike.%${searchTerm}%,father.ilike.%${searchTerm}%,reg_no.ilike.%${searchTerm}%`)
                 .order('name')
                 .limit(10);
