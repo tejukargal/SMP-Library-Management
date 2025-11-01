@@ -420,20 +420,7 @@ async function handleExportData() {
 
 // Import Data Functions
 async function handleImportData() {
-    // Prompt for password
-    const password = prompt('Enter password to import backup:');
-
-    if (!password) {
-        showToast('Import cancelled', 'warning');
-        return;
-    }
-
-    if (password !== BACKUP_PASSWORD) {
-        showToast('Incorrect password. Access denied.', 'error');
-        return;
-    }
-
-    // Trigger file input click
+    // Trigger file input click first (to maintain user interaction chain)
     const fileInput = document.getElementById('importFileInput');
     fileInput.value = ''; // Reset file input
     fileInput.click();
@@ -447,6 +434,19 @@ async function processImportFile(event) {
     // Validate file type
     if (!file.name.endsWith('.json')) {
         showToast('Please select a valid JSON backup file', 'error');
+        return;
+    }
+
+    // Prompt for password AFTER file is selected
+    const password = prompt('Enter password to import backup:');
+
+    if (!password) {
+        showToast('Import cancelled', 'warning');
+        return;
+    }
+
+    if (password !== BACKUP_PASSWORD) {
+        showToast('Incorrect password. Access denied.', 'error');
         return;
     }
 
