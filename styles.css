@@ -353,21 +353,37 @@ header h1 {
 .metric-icon {
     font-size: 2.5rem;
     line-height: 1;
+    padding-right: 1.25rem;
+    border-right: 1px solid var(--border-color);
 }
 
 .metric-content {
     flex: 1;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
 
 .metric-value {
     font-size: 2rem;
     font-weight: 700;
     line-height: 1.2;
-    transition: opacity 0.15s ease-in-out;
+    transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+}
+
+.metric-value.fade-out {
+    opacity: 0;
+    transform: translateY(-10px);
 }
 
 .metric-course-label {
-    transition: opacity 0.15s ease-in-out;
+    transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+}
+
+.metric-course-label.fade-out {
+    opacity: 0;
+    transform: translateY(-10px);
 }
 
 .metric-label {
@@ -1820,6 +1836,7 @@ header h1 {
 
     .metric-icon {
         font-size: 2rem;
+        padding-right: 1rem;
     }
 
     /* Search */
@@ -2103,6 +2120,7 @@ header h1 {
 
     .metric-icon {
         font-size: 1.75rem;
+        padding-right: 0.875rem;
     }
 
     .metric-value {

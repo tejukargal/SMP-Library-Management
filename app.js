@@ -237,7 +237,11 @@ function setupEventListeners() {
     // Issue Modal
     document.getElementById('addBookBtn').addEventListener('click', addBookEntry);
     document.getElementById('submitIssueBtn').addEventListener('click', submitIssueBooks);
-    document.getElementById('cancelIssueBtn').addEventListener('click', () => closeModal('issueModal'));
+    document.getElementById('cancelIssueBtn').addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        closeModal('issueModal');
+    });
 
     // Return Modal
     document.getElementById('submitReturnBtn').addEventListener('click', submitReturnBooks);
@@ -328,6 +332,9 @@ async function handleClearData() {
 
         showToast('All book data has been deleted successfully', 'success');
         closeModal('clearDataModal');
+
+        // Clear autocomplete cache since all books are deleted
+        allBooksCache = null;
 
         // Reload dashboard (clears search and shows dashboard list)
         await loadDashboard();
@@ -571,6 +578,9 @@ async function processImportFile(event) {
             }
         }
 
+        // Clear autocomplete cache to include imported books
+        allBooksCache = null;
+
         // Reload dashboard to show updated data
         await loadDashboard();
 
@@ -688,21 +698,24 @@ function rotateCourseDisplay() {
     const currentCourse = coursesList[currentCourseIndex];
     const count = courseWiseIssuedCounts[currentCourse] || 0;
 
-    // Update display with smooth transition
+    // Update display with smooth fade animation
     const valueElement = document.getElementById('totalIssuedBooks');
     const labelElement = document.getElementById('issuedCourseName');
 
     if (valueElement && labelElement) {
-        // Add fade effect
-        valueElement.style.opacity = '0.5';
-        labelElement.style.opacity = '0.5';
+        // Fade out with transform
+        valueElement.classList.add('fade-out');
+        labelElement.classList.add('fade-out');
 
         setTimeout(() => {
+            // Update content while faded out
             valueElement.textContent = count;
             labelElement.textContent = currentCourse;
-            valueElement.style.opacity = '1';
-            labelElement.style.opacity = '1';
-        }, 150);
+
+            // Fade in by removing fade-out class
+            valueElement.classList.remove('fade-out');
+            labelElement.classList.remove('fade-out');
+        }, 300);
     }
 }
 
@@ -728,21 +741,24 @@ function rotateStudentCourseDisplay() {
     const currentCourse = studentCoursesList[currentStudentCourseIndex];
     const count = courseWiseStudentCounts[currentCourse] || 0;
 
-    // Update display with smooth transition
+    // Update display with smooth fade animation
     const valueElement = document.getElementById('totalStudents');
     const labelElement = document.getElementById('studentsCourseName');
 
     if (valueElement && labelElement) {
-        // Add fade effect
-        valueElement.style.opacity = '0.5';
-        labelElement.style.opacity = '0.5';
+        // Fade out with transform
+        valueElement.classList.add('fade-out');
+        labelElement.classList.add('fade-out');
 
         setTimeout(() => {
+            // Update content while faded out
             valueElement.textContent = count;
             labelElement.textContent = currentCourse;
-            valueElement.style.opacity = '1';
-            labelElement.style.opacity = '1';
-        }, 150);
+
+            // Fade in by removing fade-out class
+            valueElement.classList.remove('fade-out');
+            labelElement.classList.remove('fade-out');
+        }, 300);
     }
 }
 
@@ -2041,6 +2057,10 @@ window.saveIssuedBook = async function(bookId) {
         }
 
         showToast('Book updated successfully', 'success');
+
+        // Clear autocomplete cache to reflect updated book details
+        allBooksCache = null;
+
         await loadPreviouslyIssuedBooks();
 
         // Refresh dashboard to update counts
@@ -2066,6 +2086,10 @@ window.removeIssuedBook = async function(bookId) {
         if (error) throw error;
 
         showToast('Book entry deleted successfully', 'success');
+
+        // Clear autocomplete cache to reflect deleted book
+        allBooksCache = null;
+
         await loadPreviouslyIssuedBooks();
 
         // Refresh dashboard to update counts
@@ -2460,6 +2484,9 @@ async function submitIssueBooks() {
 
         showToast(`Successfully issued ${books.length} book(s) to ${borrower.name}`, 'success');
         closeModal('issueModal');
+
+        // Clear autocomplete cache to include newly issued books
+        allBooksCache = null;
 
         // Refresh dashboard
         await loadDashboard();
