@@ -4,22 +4,23 @@
   "description": "Library Management System for SMP Library Register",
   "type": "module",
   "scripts": {
+    "serve": "node server.js",
+    "migrate": "node migrate-to-nile.js",
     "import": "node import-students.js",
-    "serve": "http-server -p 8000 -o"
+    "import:staff": "node import-staff.js"
   },
   "keywords": [
     "library",
     "management",
-    "supabase",
+    "nile",
     "education"
   ],
   "author": "",
   "license": "MIT",
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
-    "csv-parse": "^5.5.3"
-  },
-  "devDependencies": {
-    "http-server": "^14.1.1"
+    "csv-parse": "^5.5.3",
+    "express": "^4.22.1",
+    "pg": "^8.18.0"
   }
 }

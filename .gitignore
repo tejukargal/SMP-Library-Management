@@ -1,5 +1,7 @@
 # Configuration
 config.json
+.env
+logs/
 
 # Node modules (if using import script)
 node_modules/

@@ -1,8 +1,8 @@
 // Library Management System - Main Application
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import { NileClient } from './nile-client.js';
 
 // Application State
-let supabase = null;
+let db = null;
 let selectedStudent = null;
 let selectedStaff = null;
 let bookEntryCount = 0;
@@ -40,11 +40,8 @@ async function init() {
             return;
         }
 
-        // Load configuration
-        const config = await loadConfig();
-
-        // Initialize Supabase
-        supabase = createClient(config.supabaseUrl, config.supabaseAnonKey);
+        // Initialize Nile database client
+        db = new NileClient('/api/sql');
 
         // Setup event listeners
         setupEventListeners();
@@ -55,7 +52,7 @@ async function init() {
         console.log('Application initialized successfully');
     } catch (error) {
         console.error('Initialization error:', error);
-        showToast('Failed to initialize application. Check config.json', 'error');
+        showToast('Failed to initialize application', 'error');
     }
 }
 
@@ -106,8 +103,8 @@ async function handleLogin(event) {
 
         // Initialize app after successful login
         try {
-            const config = await loadConfig();
-            supabase = createClient(config.supabaseUrl, config.supabaseAnonKey);
+            // Initialize Nile database client
+            db = new NileClient('/api/sql');
 
             // Setup all event listeners
             setupEventListeners();
@@ -323,7 +320,7 @@ async function handleClearData() {
 
     try {
         // Delete all records from book_issues table
-        const { error } = await supabase
+        const { error } = await db
             .from('book_issues')
             .delete()
             .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all records
@@ -364,7 +361,7 @@ async function handleExportData() {
         showToast('Preparing data export...', 'info');
 
         // Fetch all students
-        const { data: students, error: studentsError } = await supabase
+        const { data: students, error: studentsError } = await db
             .from('students')
             .select('*')
             .order('name');
@@ -372,7 +369,7 @@ async function handleExportData() {
         if (studentsError) throw studentsError;
 
         // Fetch all book issues
-        const { data: bookIssues, error: booksError } = await supabase
+        const { data: bookIssues, error: booksError } = await db
             .from('book_issues')
             .select('*')
             .order('created_at');
@@ -505,7 +502,7 @@ async function processImportFile(event) {
                 for (let i = 0; i < backupData.students.length; i += batchSize) {
                     const batch = backupData.students.slice(i, i + batchSize);
 
-                    const { data, error } = await supabase
+                    const { data, error } = await db
                         .from('students')
                         .upsert(batch, {
                             onConflict: 'reg_no,course',
@@ -543,7 +540,7 @@ async function processImportFile(event) {
                 for (let i = 0; i < backupData.book_issues.length; i += chunkSize) {
                     const chunk = backupData.book_issues.slice(i, i + chunkSize);
 
-                    const { data, error } = await supabase
+                    const { data, error } = await db
                         .from('book_issues')
                         .upsert(chunk, {
                             onConflict: 'id',
@@ -616,7 +613,7 @@ async function loadDashboard() {
 
         // Get all book issues (optimized with select only needed fields)
         // Join with both students and staff tables
-        const { data: allBooks, error } = await supabase
+        const { data: allBooks, error } = await db
             .from('book_issues')
             .select('*, students(name, reg_no, course, year), staff(staff_id, name, dept, designation, type)');
 
@@ -766,7 +763,7 @@ function rotateStudentCourseDisplay() {
 async function loadStudentsCount() {
     try {
         // Fetch all students with 'In' status (or null, which defaults to 'In')
-        const { data: students, error } = await supabase
+        const { data: students, error } = await db
             .from('students')
             .select('*')
             .or('in_out.eq.In,in_out.is.null')
@@ -848,7 +845,7 @@ async function showStudentsBreakdown() {
     });
 
     // Fetch book statistics by year and course
-    const { data: bookIssues, error } = await supabase
+    const { data: bookIssues, error } = await db
         .from('book_issues')
         .select('*, students(year, course)');
 
@@ -976,7 +973,7 @@ async function loadDashboardStudentsList() {
 
     try {
         // Get all students who have book activity
-        const { data: studentsWithBooks, error } = await supabase
+        const { data: studentsWithBooks, error } = await db
             .from('book_issues')
             .select('student_reg_no, students(reg_no, name, father, year, course)')
             .order('updated_at', { ascending: false });
@@ -1492,7 +1489,7 @@ async function performSearch() {
 
     try {
         // Search students (only those currently admitted with 'In' status)
-        const { data: students, error: studentsError } = await supabase
+        const { data: students, error: studentsError } = await db
             .from('students')
             .select('*')
             .eq('in_out', 'In')
@@ -1503,7 +1500,7 @@ async function performSearch() {
         if (studentsError) throw studentsError;
 
         // Search staff
-        const { data: staff, error: staffError } = await supabase
+        const { data: staff, error: staffError } = await db
             .from('staff')
             .select('*')
             .or(`name.ilike.%${searchTerm}%,dept.ilike.%${searchTerm}%,designation.ilike.%${searchTerm}%,staff_id.ilike.%${searchTerm}%`)
@@ -1615,7 +1612,7 @@ async function displayResults(results) {
 async function getBookStatistics(borrower) {
     try {
         const isStudent = borrower.borrower_type === 'student';
-        const query = supabase.from('book_issues').select('status, book_name, author, sem, phone_no, issue_date');
+        const query = db.from('book_issues').select('status, book_name, author, sem, phone_no, issue_date');
 
         if (isStudent) {
             query.eq('student_reg_no', borrower.reg_no);
@@ -1662,7 +1659,7 @@ async function getBookStatistics(borrower) {
 // Open Issue Modal for Student (called from button)
 window.openIssueModalForStudent = async function(regNo, course) {
     // Find student data - use both reg_no and course as they form composite key
-    const { data, error } = await supabase
+    const { data, error } = await db
         .from('students')
         .select('*')
         .eq('reg_no', regNo)
@@ -1683,7 +1680,7 @@ window.openIssueModalForStudent = async function(regNo, course) {
 // Open Return Modal for Student (called from button)
 window.openReturnModalForStudent = async function(regNo, course) {
     // Find student data - use both reg_no and course as they form composite key
-    const { data, error } = await supabase
+    const { data, error } = await db
         .from('students')
         .select('*')
         .eq('reg_no', regNo)
@@ -1703,7 +1700,7 @@ window.openReturnModalForStudent = async function(regNo, course) {
 
 // Open Issue Modal for Staff (called from button)
 window.openIssueModalForStaff = async function(staffId) {
-    const { data, error } = await supabase
+    const { data, error } = await db
         .from('staff')
         .select('*')
         .eq('staff_id', staffId)
@@ -1722,7 +1719,7 @@ window.openIssueModalForStaff = async function(staffId) {
 
 // Open Return Modal for Staff (called from button)
 window.openReturnModalForStaff = async function(staffId) {
-    const { data, error } = await supabase
+    const { data, error } = await db
         .from('staff')
         .select('*')
         .eq('staff_id', staffId)
@@ -1748,7 +1745,7 @@ async function openIssueModal() {
 
     try {
         // Fetch ALL data FIRST (before showing modal)
-        const query = supabase
+        const query = db
             .from('book_issues')
             .select('*')
             .order('issue_date', { ascending: false });
@@ -1876,7 +1873,7 @@ async function loadPreviouslyIssuedBooks() {
 
     try {
         // Fetch ALL books (issued + returned) for complete history
-        const query = supabase
+        const query = db
             .from('book_issues')
             .select('*')
             .order('issue_date', { ascending: false });
@@ -1940,7 +1937,7 @@ async function loadPreviouslyIssuedBooks() {
 window.editIssuedBook = async function(bookId) {
     try {
         // Fetch the book details
-        const { data: book, error } = await supabase
+        const { data: book, error } = await db
             .from('book_issues')
             .select('*')
             .eq('id', bookId)
@@ -2033,7 +2030,7 @@ window.saveIssuedBook = async function(bookId) {
             return;
         }
 
-        const { error } = await supabase
+        const { error } = await db
             .from('book_issues')
             .update({
                 book_name: bookName,
@@ -2041,7 +2038,8 @@ window.saveIssuedBook = async function(bookId) {
                 book_no: bookNo,
                 sem: sem || null,
                 phone_no: phoneNo || null,
-                issue_date: issueDate
+                issue_date: issueDate,
+                updated_at: new Date().toISOString()
             })
             .eq('id', bookId);
 
@@ -2078,7 +2076,7 @@ window.removeIssuedBook = async function(bookId) {
     if (!confirmed) return;
 
     try {
-        const { error } = await supabase
+        const { error } = await db
             .from('book_issues')
             .delete()
             .eq('id', bookId);
@@ -2139,7 +2137,7 @@ async function fetchAllBooks() {
     if (allBooksCache) return allBooksCache;
 
     try {
-        const { data, error } = await supabase
+        const { data, error } = await db
             .from('book_issues')
             .select('book_name, author, book_no')
             .order('created_at', { ascending: false });
@@ -2476,7 +2474,7 @@ async function submitIssueBooks() {
     }
 
     try {
-        const { data, error } = await supabase
+        const { data, error } = await db
             .from('book_issues')
             .insert(books);
 
@@ -2510,7 +2508,7 @@ async function openReturnModal() {
     const container = document.getElementById('issuedBooksContainer');
 
     try {
-        const query = supabase
+        const query = db
             .from('book_issues')
             .select('*')
             .eq('status', 'issued')
@@ -2594,7 +2592,7 @@ async function loadIssuedBooks() {
     const isStudent = !!selectedStudent;
 
     try {
-        const query = supabase
+        const query = db
             .from('book_issues')
             .select('*')
             .eq('status', 'issued')
@@ -2665,11 +2663,12 @@ async function submitReturnBooks() {
     const returnDate = getCurrentDate();
 
     try {
-        const { data, error } = await supabase
+        const { data, error } = await db
             .from('book_issues')
             .update({
                 return_date: returnDate,
-                status: 'returned'
+                status: 'returned',
+                updated_at: new Date().toISOString()
             })
             .in('id', bookIds);
 
@@ -2706,7 +2705,7 @@ async function refreshSearchResults() {
     if (searchTerm) {
         try {
             // Search both students and staff (only students with 'In' status)
-            const { data: students, error: studentsError } = await supabase
+            const { data: students, error: studentsError } = await db
                 .from('students')
                 .select('*')
                 .eq('in_out', 'In')
@@ -2716,7 +2715,7 @@ async function refreshSearchResults() {
 
             if (studentsError) throw studentsError;
 
-            const { data: staff, error: staffError } = await supabase
+            const { data: staff, error: staffError } = await db
                 .from('staff')
                 .select('*')
                 .or(`name.ilike.%${searchTerm}%,dept.ilike.%${searchTerm}%,designation.ilike.%${searchTerm}%,staff_id.ilike.%${searchTerm}%`)

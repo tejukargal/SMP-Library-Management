@@ -1,4 +1,4 @@
 {
-  "supabaseUrl": "https://your-project-id.supabase.co",
-  "supabaseAnonKey": "your-anon-key-here"
+  "_comment": "This file is no longer used for database config. Database credentials are now in .env",
+  "_note": "Copy .env.example to .env and fill in your Nile DB credentials"
 }
