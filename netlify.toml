@@ -1,0 +1,16 @@
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+# Redirect /api/sql → serverless function (keeps nile-client.js unchanged)
+[[redirects]]
+  from = "/api/sql"
+  to = "/.netlify/functions/sql"
+  status = 200
+  force = true
+
+# SPA fallback — serve index.html for all other routes
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
